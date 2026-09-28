@@ -1,0 +1,33 @@
+# Environment / secrets
+.env
+*.env.local
+
+# Generated datasets (never commit data)
+data/raw/*
+data/generated/*
+!data/raw/.gitkeep
+!data/generated/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Spark / Iceberg local state
+spark-warehouse/
+metastore_db/
+derby.log
+checkpoints/
+
+# Benchmark outputs
+results/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
