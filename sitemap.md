@@ -9,8 +9,12 @@
 
 ## 1. Current state
 
-The repository is at **Milestone 0 — skeleton only**.
-Directories exist (with `.gitkeep`) but contain **no implementation yet**.
+| Milestone | Status |
+|---|---|
+| M0 — skeleton | Directories, `Makefile` (`help`, `setup`, `generate-data`, `test`), `requirements.txt`, `pyproject.toml` (pytest config) |
+| M1 — data generation | **In progress (Week 1, TV1):** `patients`, `encounters`, `lab_results` generator + unit tests. `medications`, `vitals`, `bed_events` come in Week 2. |
+
+Directories still holding only `.gitkeep` have no implementation yet.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
 ---
@@ -37,13 +41,15 @@ Directories exist (with `.gitkeep`) but contain **no implementation yet**.
 └── scripts/             # bootstrap, reset, seed, demo, benchmark
 ```
 
-Still to be created at the root (Milestone 0, `plan.md` §22):
+Root files:
 
-| File | Purpose |
-|---|---|
-| `Makefile` | Stable command interface (`make help`, `make up`, `make batch`, … — `plan.md` §25) |
-| `.env.example` | All env vars with safe local defaults (`plan.md` §26). Never commit `.env`. |
-| `docker-compose.yml` | Local stack: MinIO, Iceberg REST, Trino, Spark, Kafka, ClickHouse, Grafana |
+| File | Purpose | Status |
+|---|---|---|
+| `Makefile` | Stable command interface (`make help`, `make up`, `make batch`, … — `plan.md` §25). Add your target when you add a feature. | exists |
+| `requirements.txt` | Python dependencies (`make setup`) | exists |
+| `pyproject.toml` | pytest config (repo root on `PYTHONPATH`) | exists |
+| `.env.example` | All env vars with safe local defaults (`plan.md` §26). Never commit `.env`. | todo |
+| `docker-compose.yml` | Local stack: MinIO, Iceberg REST, Trino, Spark, Kafka, ClickHouse, Grafana | todo |
 
 ---
 
@@ -74,7 +80,21 @@ Docs describe **what exists**, never planned-but-unbuilt features (`AGENTS.md` �
 
 | Path | Planned files | Responsibility | Wk |
 |---|---|---|---|
-| `batch_generator/` | `generate.py`, `config.yaml` | Synthetic patients, encounters, labs, medications, vitals, bed_events → Parquet. Deterministic seed, configurable scale (1k → 1M). | 1–2 |
+| `batch_generator/` | `generate.py`, `config.yaml`, `schemas.py` | Synthetic patients, encounters, labs, medications, vitals, bed_events → Parquet. Deterministic seed, configurable scale (1k → 1M). `schemas.py` = Arrow schemas + enums + lab catalog (the source-file contract for Bronze). | 1–2 |
+
+**Batch generator output contract** (`make generate-data PATIENTS=N`):
+
+```text
+data/generated/
+├── patients.parquet       # → bronze.patients_raw
+├── encounters.parquet     # → bronze.encounters_raw
+├── lab_results.parquet    # → bronze.lab_results_raw
+└── _manifest.json         # config, row_counts per file, injected_defects counts
+```
+
+- Timestamps are `timestamp[us, tz=UTC]`; IDs are zero-padded strings (`P00000001`, `E000000001`, `L0000000001`).
+- Raw files intentionally contain defects (rates in `config.yaml` → `data_quality`): exact duplicate encounter/lab rows, department aliases (`ER`, `Cardio`, …; map in `schemas.DEPARTMENT_ALIASES`), and `discharge_time < admission_time`. Foreign keys are always valid. Silver must handle these; `_manifest.json` reports how many were injected.
+- Same seed + config ⇒ identical data; re-running overwrites the files.
 | `stream_generator/` | `producer.py`, `event_models.py`, `config.yaml` | Kafka producer with common event envelope, `--rate`, key = `patient_id`; injects late / duplicate / invalid events. | 4, 7 |
 
 ### 3.4 `spark/` — Batch + Speed processing

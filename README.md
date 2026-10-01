@@ -101,7 +101,13 @@ See [`sitemap.md`](./sitemap.md) for what goes in each directory.
 
 ## 4. Status
 
-🚧 **Milestone 0 — repository skeleton.** Only the directory structure exists; implementation starts in Week 1 (see [`works.md`](./works.md)).
+🚧 **Week 1.** Implemented so far: a synthetic batch data generator for `patients`, `encounters` and `lab_results` (Parquet, deterministic seed) with unit tests. The rest of the pipeline is not implemented yet — see [`works.md`](./works.md).
+
+```bash
+make setup                        # install Python dependencies
+make generate-data PATIENTS=1000  # write Parquet to data/generated/
+make test                         # run unit tests
+```
 
 ## 5. Team
 
