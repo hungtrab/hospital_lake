@@ -133,8 +133,31 @@ Without `--server`, the script uses `TRINO_HOST` (default `localhost`) and
 
 Run the unit checks with `python -m unittest discover -s tests/unit -v`.
 These tests simulate CLI responses; they do not certify the live integration.
-Trino deployment/catalog configuration and the actual Spark → Iceberg → Trino
-gate remain pending. A matching row count alone does not prove all field values.
+The actual Spark → Iceberg → Trino gate remains pending. A matching row count
+alone does not prove all field values.
+
+### TV4 local Trino deployment
+
+`docker-compose.yml` currently provisions **Trino only** (image `trinodb/trino:483`).
+It mounts the Iceberg REST/S3 catalog in `infra/docker/trino/`, uses a 1 GiB JVM
+heap within a 2 GiB container limit, and publishes its port on localhost.
+
+1. Copy `.env.example` to `.env` and set the credentials used by TV2's MinIO.
+2. Have TV2 provide reachable MinIO and Iceberg REST endpoints. Defaults assume
+   services named `minio` and `iceberg-rest` on the same Compose network. For
+   services running on the Docker Desktop host, use `host.docker.internal` in
+   `.env` instead of `localhost` (which refers to the Trino container).
+3. Run `docker compose config --quiet`, then `docker compose up -d --wait trino`.
+4. Inspect failures with `docker compose logs trino`.
+
+The health check runs `SELECT 1`: it proves query-engine readiness only, not
+Iceberg or MinIO connectivity. The table smoke check above verifies the next
+stage once TV3 has written a fixture. Stop this service with `docker compose stop trino`.
+No MinIO/catalog/Spark deployment is included in this TV4 change.
+
+Configuration follows the upstream [Trino container documentation](https://trino.io/docs/current/installation/containers.html),
+[REST catalog properties](https://trino.io/docs/current/object-storage/metastores.html#rest-catalog),
+and [S3 settings](https://trino.io/docs/current/object-storage/file-system-s3.html).
 
 ## 5. Team
 

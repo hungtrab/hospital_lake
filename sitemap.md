@@ -37,13 +37,13 @@ It writes deterministic CSV patients, encounters, and lab results. TV4's `script
 └── scripts/             # bootstrap, reset, seed, demo, benchmark
 ```
 
-Still to be created at the root (Milestone 0, `plan.md` §22):
+Root command/config files (Milestone 0, `plan.md` §22):
 
 | File | Purpose |
 |---|---|
 | `Makefile` | Stable command interface (`make help`, `make up`, `make batch`, … — `plan.md` §25) |
-| `.env.example` | All env vars with safe local defaults (`plan.md` §26). Never commit `.env`. |
-| `docker-compose.yml` | Local stack: MinIO, Iceberg REST, Trino, Spark, Kafka, ClickHouse, Grafana |
+| `.env.example` | Implemented Trino/MinIO/catalog settings; credentials intentionally blank. Never commit `.env`. |
+| `docker-compose.yml` | Currently Trino only; MinIO/catalog and the remaining services await their assigned tasks. |
 
 ---
 
@@ -107,6 +107,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Path | Content | TV | Wk |
 |---|---|---|---|
 | `docker/` | Dockerfiles, service configs mounted by `docker-compose.yml` (Trino catalog, MinIO bootstrap, Kafka topic init, …) | TV2 (TV4 for Trino) | 1, 4 |
+| `docker/trino/`, `docker/trino/catalog/` | Implemented single-node Trino config, 1 GiB JVM heap, Iceberg REST/S3 catalog with environment-provided credentials | TV4 | 1 |
 | `k8s/namespace.yaml` | Namespace `hospital-lake` | any | 6 |
 | `k8s/minio/`, `k8s/iceberg/`, `k8s/trino/` | Storage + catalog + query engine manifests, PVCs | TV1 | 6 |
 | `k8s/kafka/` | Strimzi `Kafka` + `KafkaTopic` resources, producer Deployment | TV2 | 6 |
