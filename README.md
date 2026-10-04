@@ -119,12 +119,29 @@ Requires Docker Engine, Docker Compose v2+ (either `docker compose` or `docker-c
 ```bash
 make setup
 make config
-make up
+make minio-up
 make smoke-minio
+make test-minio
 ```
 
 Expected: MinIO becomes healthy and the smoke check prints `PASS`. Open the console at http://localhost:9001 and sign in with the local credentials in `.env`. The S3 API is at http://localhost:9000; containers on the Compose network use `MINIO_ENDPOINT=http://minio:9000`. Host ports can be changed in `.env`.
 
+`make minio-up` builds only MinIO from the pinned upstream release
+`RELEASE.2025-04-22T22-12-26Z` using `infra/docker/minio/Dockerfile`. This avoids
+the unavailable upstream MinIO image. The first build downloads the Go toolchain
+image and source dependencies; subsequent builds reuse Docker cache. No host Go
+installation is required. This follows the upstream
+[source installation approach](https://github.com/minio/minio/tree/RELEASE.2025-04-22T22-12-26Z).
+Existing `.env` files may still contain the old image
+name: set `MINIO_IMAGE=hospital-lake/minio:RELEASE.2025-04-22T22-12-26Z`.
+
+`make test-minio` creates a unique temporary bucket, writes and reads a test
+object through the authenticated S3 API, recreates the MinIO container, and
+checks the object again. It cleans up the test object and bucket. Run this
+before shared workloads: container recreation briefly interrupts MinIO. It
+does not create the project warehouse bucket.
+
+`make minio-stop` stops MinIO while preserving data.
 `make up` starts both configured services. To start MinIO alone, run
 `docker compose up -d --wait minio` (or `docker-compose up -d --wait minio`).
 
@@ -173,7 +190,9 @@ The health check runs `SELECT 1`: it proves query-engine readiness only, not
 Iceberg or MinIO connectivity. The table smoke check above verifies the next
 stage once TV3 has written a fixture. Stop this service with `docker compose stop trino`.
 MinIO and Trino share the `hospital-lake` network. Catalog and Spark deployment
-remain pending. MinIO runtime verification is pending after an image pull failure.
+remain pending. MinIO is built locally from pinned upstream source because pulling the upstream
+image failed. Readiness and the live S3 persistence test passed on the local
+Docker environment; this does not certify catalog/Spark/Trino integration.
 
 Once the table is available, run all four read-only probes using the CLI bundled
 in the Trino container (no host CLI installation needed):

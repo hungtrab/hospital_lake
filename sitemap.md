@@ -10,7 +10,7 @@
 ## 1. Current state
 
 The repository has an **initial Week 1 batch generator** in `generators/batch_generator/generate.py`, with tests in `tests/unit/test_batch_generator.py`.
-It writes deterministic CSV patients, encounters, and lab results. TV4's `scripts/trino_smoke.py` checks a known table's row count through the Trino CLI; `tests/unit/test_trino_smoke.py` tests its success/failure handling. Local MinIO and Trino deployment configurations exist; MinIO has a persistent volume and readiness check. MinIO runtime verification is pending after an image pull failure. Iceberg REST Catalog, bucket bootstrap, live integration, Parquet output and the full pipeline remain pending.
+It writes deterministic CSV patients, encounters, and lab results. TV4's `scripts/trino_smoke.py` checks a known table's row count through the Trino CLI; `tests/unit/test_trino_smoke.py` tests its success/failure handling. Local MinIO and Trino deployment configurations exist; MinIO has a persistent volume and readiness check. MinIO now builds locally from pinned upstream source; readiness and authenticated S3 persistence across container recreation passed in the local Docker environment. Iceberg REST Catalog, bucket bootstrap, live integration, Parquet output and the full pipeline remain pending.
 TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. SparkSession and connector setup remain pending.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
@@ -42,7 +42,7 @@ Root command/config files (Milestone 0, `plan.md` §22):
 
 | File | Purpose |
 |---|---|
-| `Makefile` | Implemented `help`, `setup`, `config`, `up`, `down`, `smoke-minio`, `test`, `trino-config`, `trino-up`, `trino-stop`, `trino-smoke`; other pipeline targets await implementation. |
+| `Makefile` | Implemented `help`, `setup`, `config`, `up`, `down`, `minio-up`, `minio-stop`, `smoke-minio`, `test-minio`, `test`, `trino-config`, `trino-up`, `trino-stop`, `trino-smoke`; other pipeline targets await implementation. |
 | `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; synthetic-data local credentials shared by MinIO/Trino; `MINIO_IMAGE`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT` configure the local storage service. Endpoints use Compose service names. Makefile supports both Compose CLI forms via `COMPOSE`; the existing Python Trino smoke client requires `docker compose` in container mode. Never commit `.env`. |
 | `docker-compose.yml` | MinIO and Trino share the `hospital-lake` network; `minio-data` persists storage. Catalog and remaining services await their assigned tasks. |
 
@@ -108,6 +108,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Path | Content | TV | Wk |
 |---|---|---|---|
 | `docker/` | Dockerfiles, service configs mounted by `docker-compose.yml` (Trino catalog, MinIO bootstrap, Kafka topic init, …) | TV2 (TV4 for Trino) | 1, 4 |
+| `docker/minio/Dockerfile` | Build pinned MinIO upstream source locally with Go; runtime includes curl for health and S3 checks | TV2 | 1 |
 | `docker/trino/`, `docker/trino/catalog/` | Implemented single-node Trino config, 1 GiB JVM heap, Iceberg REST/S3 catalog with environment-provided credentials | TV4 | 1 |
 | `k8s/namespace.yaml` | Namespace `hospital-lake` | any | 6 |
 | `k8s/minio/`, `k8s/iceberg/`, `k8s/trino/` | Storage + catalog + query engine manifests, PVCs | TV1 | 6 |
@@ -121,7 +122,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Path | Content | Wk |
 |---|---|---|
 | `unit/` | Generators, schemas, normalization, validation, aggregation logic (pytest) | 1+ |
-| `integration/` | Spark → Iceberg, Trino → Iceberg, Kafka → Spark, Spark → ClickHouse | 1+ |
+| `integration/` | Implemented `test_minio.py`: live authenticated S3 write/read, container recreation and persistence check with temporary fixture cleanup. Planned Spark → Iceberg, Trino → Iceberg, Kafka → Spark, Spark → ClickHouse | 1+ |
 | `e2e/` | Event → Kafka → Streaming → ClickHouse/Trino assertions; full regression suite | 5, 8 |
 
 ### 3.9 `scripts/` — Automation
