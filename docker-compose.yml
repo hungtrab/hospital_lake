@@ -1,7 +1,27 @@
 name: hospital-lake
 
-# TV4's serving component. TV2 adds MinIO and the REST catalog to this stack.
 services:
+  minio:
+    image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-04-22T22-12-26Z}
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?Copy .env.example to .env first}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Copy .env.example to .env first}
+    ports:
+      - '127.0.0.1:${MINIO_API_PORT:-9000}:9000'
+      - '127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001'
+    volumes:
+      - minio-data:/data
+    networks:
+      - hospital-lake
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'curl', '--fail', '--silent', 'http://localhost:9000/minio/health/ready']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
   trino:
     image: trinodb/trino:483
     ports:
@@ -23,3 +43,11 @@ services:
       timeout: 10s
       retries: 8
       start_period: 60s
+    networks:
+      - hospital-lake
+
+volumes:
+  minio-data:
+
+networks:
+  hospital-lake:

@@ -112,6 +112,24 @@ python -m unittest discover -s tests/unit -v
 
 The generator writes `patients.csv`, `encounters.csv`, and `lab_results.csv` under `data/generated/` (one row per patient in each file). Use `--output-dir` to choose another directory. Rerunning replaces these three files; the same seed and patient count reproduce the same bytes. These initial clean fixtures are inputs for future batch ingestion; intentional bad-data cases and streaming are not implemented yet.
 
+### Run local MinIO (TV2, Week 1 — task 1)
+
+Requires Docker Engine, Docker Compose v2+ (either `docker compose` or `docker-compose`), Make and curl.
+
+```bash
+make setup
+make config
+make up
+make smoke-minio
+```
+
+Expected: MinIO becomes healthy and the smoke check prints `PASS`. Open the console at http://localhost:9001 and sign in with the local credentials in `.env`. The S3 API is at http://localhost:9000; containers on the Compose network use `MINIO_ENDPOINT=http://minio:9000`. Host ports can be changed in `.env`.
+
+`make up` starts both configured services. To start MinIO alone, run
+`docker compose up -d --wait minio` (or `docker-compose up -d --wait minio`).
+
+`make down` stops the stack while preserving the `minio-data` volume. Running `make up` again reuses that volume. `docker compose down -v` deletes stored data; it is not part of the normal stop command. Use `docker-compose` instead if that is your installed CLI.
+
 ### TV4 Week 1: Trino row-count smoke check
 
 After TV2 starts MinIO/catalog and TV3 writes an Iceberg fixture with a known
@@ -138,13 +156,14 @@ alone does not prove all field values.
 
 ### TV4 local Trino deployment
 
-`docker-compose.yml` currently provisions **Trino only** (image `trinodb/trino:483`).
-It mounts the Iceberg REST/S3 catalog in `infra/docker/trino/`, uses a 1 GiB JVM
+`docker-compose.yml` currently provisions **MinIO and Trino**. Trino uses image
+`trinodb/trino:483` and mounts the Iceberg REST/S3 catalog in `infra/docker/trino/`, uses a 1 GiB JVM
 heap within a 2 GiB container limit, and publishes its port on localhost.
 
-1. Copy `.env.example` to `.env` and set the credentials used by TV2's MinIO.
-2. Have TV2 provide reachable MinIO and Iceberg REST endpoints. Defaults assume
-   services named `minio` and `iceberg-rest` on the same Compose network. For
+1. Run `make setup` to create `.env`. It includes synthetic-data local credentials shared by MinIO and Trino; existing `.env` files are preserved.
+2. MinIO is provided on the shared Compose network. Iceberg REST Catalog and
+   bucket bootstrap remain pending TV2 tasks; the default catalog URI targets
+   the future `iceberg-rest` service. For
    services running on the Docker Desktop host, use `host.docker.internal` in
    `.env` instead of `localhost` (which refers to the Trino container).
 3. Run `docker compose config --quiet`, then `docker compose up -d --wait trino`.
@@ -153,7 +172,8 @@ heap within a 2 GiB container limit, and publishes its port on localhost.
 The health check runs `SELECT 1`: it proves query-engine readiness only, not
 Iceberg or MinIO connectivity. The table smoke check above verifies the next
 stage once TV3 has written a fixture. Stop this service with `docker compose stop trino`.
-No MinIO/catalog/Spark deployment is included in this TV4 change.
+MinIO and Trino share the `hospital-lake` network. Catalog and Spark deployment
+remain pending. MinIO runtime verification is pending after an image pull failure.
 
 Once the table is available, run all four read-only probes using the CLI bundled
 in the Trino container (no host CLI installation needed):
@@ -186,7 +206,8 @@ non-empty settings, HTTP(S) endpoints, and an S3 warehouse URI; and requires
 `MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY` without including them in its repr.
 No additional Python dependencies are needed.
 
-Copy `.env.example` to `.env` and fill in MinIO credentials. To load that file
+Run `make setup` to create `.env` with local MinIO credentials, or configure
+your existing `.env`. To load that file
 into a shell and validate the configuration from the repository root:
 
 ```bash

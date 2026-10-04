@@ -10,7 +10,7 @@
 ## 1. Current state
 
 The repository has an **initial Week 1 batch generator** in `generators/batch_generator/generate.py`, with tests in `tests/unit/test_batch_generator.py`.
-It writes deterministic CSV patients, encounters, and lab results. TV4's `scripts/trino_smoke.py` checks a known table's row count through the Trino CLI; `tests/unit/test_trino_smoke.py` tests its success/failure handling. Trino deployment and live integration remain pending, as do Parquet output and the full pipeline.
+It writes deterministic CSV patients, encounters, and lab results. TV4's `scripts/trino_smoke.py` checks a known table's row count through the Trino CLI; `tests/unit/test_trino_smoke.py` tests its success/failure handling. Local MinIO and Trino deployment configurations exist; MinIO has a persistent volume and readiness check. MinIO runtime verification is pending after an image pull failure. Iceberg REST Catalog, bucket bootstrap, live integration, Parquet output and the full pipeline remain pending.
 TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. SparkSession and connector setup remain pending.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
@@ -42,9 +42,9 @@ Root command/config files (Milestone 0, `plan.md` §22):
 
 | File | Purpose |
 |---|---|
-| `Makefile` | Implemented `help`, `test`, `trino-config`, `trino-up`, `trino-stop`, `trino-smoke`; other pipeline targets await implementation. |
-| `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; credentials intentionally blank. Never commit `.env`. |
-| `docker-compose.yml` | Currently Trino only; MinIO/catalog and the remaining services await their assigned tasks. |
+| `Makefile` | Implemented `help`, `setup`, `config`, `up`, `down`, `smoke-minio`, `test`, `trino-config`, `trino-up`, `trino-stop`, `trino-smoke`; other pipeline targets await implementation. |
+| `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; synthetic-data local credentials shared by MinIO/Trino; `MINIO_IMAGE`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT` configure the local storage service. Endpoints use Compose service names. Makefile supports both Compose CLI forms via `COMPOSE`; the existing Python Trino smoke client requires `docker compose` in container mode. Never commit `.env`. |
+| `docker-compose.yml` | MinIO and Trino share the `hospital-lake` network; `minio-data` persists storage. Catalog and remaining services await their assigned tasks. |
 
 ---
 
