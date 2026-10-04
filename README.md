@@ -101,7 +101,22 @@ See [`sitemap.md`](./sitemap.md) for what goes in each directory.
 
 ## 4. Status
 
-🚧 **Milestone 0 — repository skeleton.** Only the directory structure exists; implementation starts in Week 1 (see [`works.md`](./works.md)).
+🚧 **Week 1 bootstrap in progress.** Local MinIO configuration is implemented with a persistent volume and readiness health check. Bucket bootstrap, Iceberg Catalog, Spark and Trino integration are not implemented yet.
+
+### Run local MinIO (TV2, Week 1 — task 1)
+
+Requires Docker Engine, Docker Compose v2+ (either `docker compose` or `docker-compose`), Make and curl.
+
+```bash
+make setup
+make config
+make up
+make smoke-minio
+```
+
+Expected: MinIO becomes healthy and the smoke check prints `PASS`. Open the console at http://localhost:9001 and sign in with the local credentials in `.env`. The S3 API is at http://localhost:9000; containers on the Compose network use `MINIO_ENDPOINT=http://minio:9000`. Host ports can be changed in `.env`.
+
+`make down` stops the stack while preserving the `minio-data` volume. Running `make up` again reuses that volume. `docker compose down -v` deletes stored data; it is not part of the normal stop command. Use `docker-compose` instead if that is your installed CLI.
 
 ## 5. Team
 

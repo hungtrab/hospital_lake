@@ -9,8 +9,8 @@
 
 ## 1. Current state
 
-The repository is at **Milestone 0 — skeleton only**.
-Directories exist (with `.gitkeep`) but contain **no implementation yet**.
+The repository is at **Week 1 bootstrap, TV2 task 1**.
+`docker-compose.yml`, `.env.example` and `Makefile` implement local MinIO with a persistent volume, a shared network and a readiness smoke check. Other implementation directories still contain only `.gitkeep`. Bucket bootstrap and Iceberg REST Catalog are pending.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
 ---
@@ -37,13 +37,13 @@ Directories exist (with `.gitkeep`) but contain **no implementation yet**.
 └── scripts/             # bootstrap, reset, seed, demo, benchmark
 ```
 
-Still to be created at the root (Milestone 0, `plan.md` §22):
+Root command/configuration files (Milestone 0, `plan.md` §22):
 
 | File | Purpose |
 |---|---|
-| `Makefile` | Stable command interface (`make help`, `make up`, `make batch`, … — `plan.md` §25) |
-| `.env.example` | All env vars with safe local defaults (`plan.md` §26). Never commit `.env`. |
-| `docker-compose.yml` | Local stack: MinIO, Iceberg REST, Trino, Spark, Kafka, ClickHouse, Grafana |
+| `Makefile` | Implemented: `help`, `setup`, `config`, `up`, `down`, `smoke-minio`. Later pipeline targets are pending. Supports both Compose CLI forms; override with `COMPOSE=...`. |
+| `.env.example` | Implemented MinIO settings: `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_ENDPOINT` (container endpoint), `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`, `MINIO_IMAGE`. Never commit `.env`. |
+| `docker-compose.yml` | Implemented MinIO service, `minio-data` volume and `hospital-lake` network. Other services are pending. |
 
 ---
 
