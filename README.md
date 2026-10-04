@@ -112,6 +112,30 @@ python -m unittest discover -s tests/unit -v
 
 The generator writes `patients.csv`, `encounters.csv`, and `lab_results.csv` under `data/generated/` (one row per patient in each file). Use `--output-dir` to choose another directory. Rerunning replaces these three files; the same seed and patient count reproduce the same bytes. These initial clean fixtures are inputs for future batch ingestion; intentional bad-data cases and streaming are not implemented yet.
 
+### TV4 Week 1: Trino row-count smoke check
+
+After TV2 starts MinIO/catalog and TV3 writes an Iceberg fixture with a known
+row count, install the [Trino CLI](https://trino.io/docs/current/client/cli.html)
+and run from the repository root:
+
+```bash
+python scripts/trino_smoke.py --table iceberg.bronze.spark_smoke --expected-rows 3
+```
+
+The table name and count above are examples: supply the actual table written by
+Spark and its expected count. The script does not create or modify data. It runs
+`SELECT count(*)` through Trino and prints `PASS` only when the count matches.
+Exit codes: `0` for success, `1` for query/connection/timeout/result failures,
+`2` for invalid arguments. An empty table succeeds only with `--expected-rows 0`.
+Use `--server http://host:8080`, `--cli /path/to/trino`, and `--timeout 60` as needed.
+Without `--server`, the script uses `TRINO_HOST` (default `localhost`) and
+`TRINO_PORT` (default `8080`). Authentication can use the CLI's own configuration.
+
+Run the unit checks with `python -m unittest discover -s tests/unit -v`.
+These tests simulate CLI responses; they do not certify the live integration.
+Trino deployment/catalog configuration and the actual Spark → Iceberg → Trino
+gate remain pending. A matching row count alone does not prove all field values.
+
 ## 5. Team
 
 Four equal members (TV1–TV4). Work allocation and weekly integration gates are defined in [`works.md`](./works.md).

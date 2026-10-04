@@ -10,7 +10,7 @@
 ## 1. Current state
 
 The repository has an **initial Week 1 batch generator** in `generators/batch_generator/generate.py`, with tests in `tests/unit/test_batch_generator.py`.
-It writes deterministic CSV patients, encounters, and lab results. Other directories remain skeletons; Parquet output and the full pipeline are planned.
+It writes deterministic CSV patients, encounters, and lab results. TV4's `scripts/trino_smoke.py` checks a known table's row count through the Trino CLI; `tests/unit/test_trino_smoke.py` tests its success/failure handling. Trino deployment and live integration remain pending, as do Parquet output and the full pipeline.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
 ---
@@ -127,6 +127,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Planned file | Purpose | Wk |
 |---|---|---|
 | `bootstrap.sh` | One-time local setup | 1 |
+| `trino_smoke.py` | TV4: read-only Trino row-count check for a Spark-created table; uses `TRINO_HOST`/`TRINO_PORT` or `--server`, returns nonzero on failure | 1 |
 | `reset.sh` | Dev reset (not a substitute for idempotency) | 1+ |
 | `seed.sh` | Generate + load demo dataset | 2 |
 | `demo.sh` | Scripted final demo | 9 |
