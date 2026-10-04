@@ -155,6 +155,25 @@ Iceberg or MinIO connectivity. The table smoke check above verifies the next
 stage once TV3 has written a fixture. Stop this service with `docker compose stop trino`.
 No MinIO/catalog/Spark deployment is included in this TV4 change.
 
+Once the table is available, run all four read-only probes using the CLI bundled
+in the Trino container (no host CLI installation needed):
+
+```bash
+python scripts/trino_smoke.py --compose --check-stack --table iceberg.bronze.spark_smoke --expected-rows 3
+# Equivalent, if GNU Make is installed:
+make trino-smoke TABLE=iceberg.bronze.spark_smoke EXPECTED_ROWS=3
+```
+
+The probes stop at the first failure, labelled `engine`, `catalog`, `count`, or
+`data`. `data` executes `SELECT * ... LIMIT 1` so a successful count alone cannot
+hide a failure reading a data file. Use a stable fixture: concurrent writes can
+change results between queries. Each query has its own `--timeout` (60 seconds
+by default). Empty fixtures cannot prove a data-file read. For a remote/local CLI,
+omit `--compose`; use `--server` as needed. The script does not print sample values.
+
+`make help` lists the available commands. `make test`, `make trino-config`,
+`make trino-up`, and `make trino-stop` wrap the commands above.
+
 Configuration follows the upstream [Trino container documentation](https://trino.io/docs/current/installation/containers.html),
 [REST catalog properties](https://trino.io/docs/current/object-storage/metastores.html#rest-catalog),
 and [S3 settings](https://trino.io/docs/current/object-storage/file-system-s3.html).

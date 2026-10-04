@@ -41,7 +41,7 @@ Root command/config files (Milestone 0, `plan.md` §22):
 
 | File | Purpose |
 |---|---|
-| `Makefile` | Stable command interface (`make help`, `make up`, `make batch`, … — `plan.md` §25) |
+| `Makefile` | Implemented `help`, `test`, `trino-config`, `trino-up`, `trino-stop`, `trino-smoke`; other pipeline targets await implementation. |
 | `.env.example` | Implemented Trino/MinIO/catalog settings; credentials intentionally blank. Never commit `.env`. |
 | `docker-compose.yml` | Currently Trino only; MinIO/catalog and the remaining services await their assigned tasks. |
 
@@ -128,7 +128,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Planned file | Purpose | Wk |
 |---|---|---|
 | `bootstrap.sh` | One-time local setup | 1 |
-| `trino_smoke.py` | TV4: read-only Trino row-count check for a Spark-created table; uses `TRINO_HOST`/`TRINO_PORT` or `--server`, returns nonzero on failure | 1 |
+| `trino_smoke.py` | TV4: row-count check; `--check-stack` probes engine/catalog/count/data, `--compose` uses container CLI. Uses `TRINO_HOST`/`TRINO_PORT` or `--server`; returns nonzero on failure. | 1 |
 | `reset.sh` | Dev reset (not a substitute for idempotency) | 1+ |
 | `seed.sh` | Generate + load demo dataset | 2 |
 | `demo.sh` | Scripted final demo | 9 |
