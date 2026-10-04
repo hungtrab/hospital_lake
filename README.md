@@ -101,7 +101,16 @@ See [`sitemap.md`](./sitemap.md) for what goes in each directory.
 
 ## 4. Status
 
-🚧 **Milestone 0 — repository skeleton.** Only the directory structure exists; implementation starts in Week 1 (see [`works.md`](./works.md)).
+🚧 **Week 1 — initial batch generator.** A dependency-free Python generator produces synthetic patients, encounters, and lab results as CSV, using the fields in `plan.md`. It supports configurable scale and seed, valid foreign keys, and UTC timestamps. Parquet, the remaining entities, and the service pipeline are still planned (see [`works.md`](./works.md)).
+
+Run from the repository root with Python 3.10+:
+
+```bash
+python generators/batch_generator/generate.py --patients 1000 --seed 42
+python -m unittest discover -s tests/unit -v
+```
+
+The generator writes `patients.csv`, `encounters.csv`, and `lab_results.csv` under `data/generated/` (one row per patient in each file). Use `--output-dir` to choose another directory. Rerunning replaces these three files; the same seed and patient count reproduce the same bytes. These initial clean fixtures are inputs for future batch ingestion; intentional bad-data cases and streaming are not implemented yet.
 
 ## 5. Team
 

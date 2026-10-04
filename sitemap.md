@@ -9,8 +9,8 @@
 
 ## 1. Current state
 
-The repository is at **Milestone 0 — skeleton only**.
-Directories exist (with `.gitkeep`) but contain **no implementation yet**.
+The repository has an **initial Week 1 batch generator** in `generators/batch_generator/generate.py`, with tests in `tests/unit/test_batch_generator.py`.
+It writes deterministic CSV patients, encounters, and lab results. Other directories remain skeletons; Parquet output and the full pipeline are planned.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
 ---
