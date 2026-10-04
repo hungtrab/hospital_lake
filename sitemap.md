@@ -9,8 +9,9 @@
 
 ## 1. Current state
 
-The repository is at **Week 1 bootstrap, TV2 task 1**.
-`docker-compose.yml`, `.env.example` and `Makefile` implement local MinIO with a persistent volume, a shared network and a readiness smoke check. Other implementation directories still contain only `.gitkeep`. Bucket bootstrap and Iceberg REST Catalog are pending.
+The repository has an **initial Week 1 batch generator** in `generators/batch_generator/generate.py`, with tests in `tests/unit/test_batch_generator.py`.
+It writes deterministic CSV patients, encounters, and lab results. TV4's `scripts/trino_smoke.py` checks a known table's row count through the Trino CLI; `tests/unit/test_trino_smoke.py` tests its success/failure handling. Local MinIO and Trino deployment configurations exist; MinIO has a persistent volume and readiness check. MinIO runtime verification is pending after an image pull failure. Iceberg REST Catalog, bucket bootstrap, live integration, Parquet output and the full pipeline remain pending.
+TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. SparkSession and connector setup remain pending.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
 ---
@@ -37,13 +38,13 @@ The repository is at **Week 1 bootstrap, TV2 task 1**.
 └── scripts/             # bootstrap, reset, seed, demo, benchmark
 ```
 
-Root command/configuration files (Milestone 0, `plan.md` §22):
+Root command/config files (Milestone 0, `plan.md` §22):
 
 | File | Purpose |
 |---|---|
-| `Makefile` | Implemented: `help`, `setup`, `config`, `up`, `down`, `smoke-minio`. Later pipeline targets are pending. Supports both Compose CLI forms; override with `COMPOSE=...`. |
-| `.env.example` | Implemented MinIO settings: `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_ENDPOINT` (container endpoint), `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`, `MINIO_IMAGE`. Never commit `.env`. |
-| `docker-compose.yml` | Implemented MinIO service, `minio-data` volume and `hospital-lake` network. Other services are pending. |
+| `Makefile` | Implemented `help`, `setup`, `config`, `up`, `down`, `smoke-minio`, `test`, `trino-config`, `trino-up`, `trino-stop`, `trino-smoke`; other pipeline targets await implementation. |
+| `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; synthetic-data local credentials shared by MinIO/Trino; `MINIO_IMAGE`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT` configure the local storage service. Endpoints use Compose service names. Makefile supports both Compose CLI forms via `COMPOSE`; the existing Python Trino smoke client requires `docker compose` in container mode. Never commit `.env`. |
+| `docker-compose.yml` | MinIO and Trino share the `hospital-lake` network; `minio-data` persists storage. Catalog and remaining services await their assigned tasks. |
 
 ---
 
@@ -107,6 +108,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Path | Content | TV | Wk |
 |---|---|---|---|
 | `docker/` | Dockerfiles, service configs mounted by `docker-compose.yml` (Trino catalog, MinIO bootstrap, Kafka topic init, …) | TV2 (TV4 for Trino) | 1, 4 |
+| `docker/trino/`, `docker/trino/catalog/` | Implemented single-node Trino config, 1 GiB JVM heap, Iceberg REST/S3 catalog with environment-provided credentials | TV4 | 1 |
 | `k8s/namespace.yaml` | Namespace `hospital-lake` | any | 6 |
 | `k8s/minio/`, `k8s/iceberg/`, `k8s/trino/` | Storage + catalog + query engine manifests, PVCs | TV1 | 6 |
 | `k8s/kafka/` | Strimzi `Kafka` + `KafkaTopic` resources, producer Deployment | TV2 | 6 |
@@ -127,6 +129,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Planned file | Purpose | Wk |
 |---|---|---|
 | `bootstrap.sh` | One-time local setup | 1 |
+| `trino_smoke.py` | TV4: row-count check; `--check-stack` probes engine/catalog/count/data, `--compose` uses container CLI. Uses `TRINO_HOST`/`TRINO_PORT` or `--server`; returns nonzero on failure. | 1 |
 | `reset.sh` | Dev reset (not a substitute for idempotency) | 1+ |
 | `seed.sh` | Generate + load demo dataset | 2 |
 | `demo.sh` | Scripted final demo | 9 |
@@ -147,7 +150,7 @@ Scale/failure-injection scripts (Week 7) also go here.
 | Kafka topics | `hospital.{patient,encounter,lab,medication,vitals,bed,dlq}` | `plan.md` §6 |
 | Event envelope | `event_id`, `event_type`, `event_time`, `source`, `version`, `payload` | `plan.md` §6 |
 | ClickHouse tables | `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | `plan.md` §12.2 |
-| Env vars | `MINIO_*`, `KAFKA_BOOTSTRAP_SERVERS`, `CLICKHOUSE_*`, `TRINO_*`, `ICEBERG_CATALOG_URI` | `plan.md` §26 → `.env.example` |
+| Env vars | `MINIO_*`, `KAFKA_BOOTSTRAP_SERVERS`, `CLICKHOUSE_*`, `TRINO_*`, `ICEBERG_CATALOG_URI`, `ICEBERG_WAREHOUSE`, `SPARK_MASTER` | `plan.md` §26 → `.env.example`; Spark loader in `spark/common/config.py` |
 | K8s namespace | `hospital-lake` | `plan.md` §14 |
 
 ---
