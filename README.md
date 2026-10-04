@@ -178,6 +178,30 @@ Configuration follows the upstream [Trino container documentation](https://trino
 [REST catalog properties](https://trino.io/docs/current/object-storage/metastores.html#rest-catalog),
 and [S3 settings](https://trino.io/docs/current/object-storage/file-system-s3.html).
 
+### TV3 Week 1: shared Spark configuration
+
+`spark/common/config.py` provides `SparkConfig.from_env()` for batch and streaming
+jobs. It reads exported variables for Spark, Iceberg REST, and MinIO; validates
+non-empty settings, HTTP(S) endpoints, and an S3 warehouse URI; and requires
+`MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY` without including them in its repr.
+No additional Python dependencies are needed.
+
+Copy `.env.example` to `.env` and fill in MinIO credentials. To load that file
+into a shell and validate the configuration from the repository root:
+
+```bash
+set -a
+source .env
+set +a
+python -c 'from spark.common.config import SparkConfig; SparkConfig.from_env(); print("PASS: Spark configuration")'
+make test
+```
+
+The shared defaults target the Compose network. For future host-side Spark jobs,
+set reachable `MINIO_ENDPOINT` and `ICEBERG_CATALOG_URI` addresses in `.env`.
+This increment only loads and validates configuration. SparkSession creation,
+connectors, and the live Spark → Iceberg → Trino smoke test remain pending.
+
 ## 5. Team
 
 Four equal members (TV1–TV4). Work allocation and weekly integration gates are defined in [`works.md`](./works.md).

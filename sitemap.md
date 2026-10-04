@@ -11,6 +11,7 @@
 
 The repository has an **initial Week 1 batch generator** in `generators/batch_generator/generate.py`, with tests in `tests/unit/test_batch_generator.py`.
 It writes deterministic CSV patients, encounters, and lab results. TV4's `scripts/trino_smoke.py` checks a known table's row count through the Trino CLI; `tests/unit/test_trino_smoke.py` tests its success/failure handling. Trino deployment and live integration remain pending, as do Parquet output and the full pipeline.
+TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. SparkSession and connector setup remain pending.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
 ---
@@ -42,7 +43,7 @@ Root command/config files (Milestone 0, `plan.md` §22):
 | File | Purpose |
 |---|---|
 | `Makefile` | Implemented `help`, `test`, `trino-config`, `trino-up`, `trino-stop`, `trino-smoke`; other pipeline targets await implementation. |
-| `.env.example` | Implemented Trino/MinIO/catalog settings; credentials intentionally blank. Never commit `.env`. |
+| `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; credentials intentionally blank. Never commit `.env`. |
 | `docker-compose.yml` | Currently Trino only; MinIO/catalog and the remaining services await their assigned tasks. |
 
 ---
@@ -149,7 +150,7 @@ Scale/failure-injection scripts (Week 7) also go here.
 | Kafka topics | `hospital.{patient,encounter,lab,medication,vitals,bed,dlq}` | `plan.md` §6 |
 | Event envelope | `event_id`, `event_type`, `event_time`, `source`, `version`, `payload` | `plan.md` §6 |
 | ClickHouse tables | `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | `plan.md` §12.2 |
-| Env vars | `MINIO_*`, `KAFKA_BOOTSTRAP_SERVERS`, `CLICKHOUSE_*`, `TRINO_*`, `ICEBERG_CATALOG_URI` | `plan.md` §26 → `.env.example` |
+| Env vars | `MINIO_*`, `KAFKA_BOOTSTRAP_SERVERS`, `CLICKHOUSE_*`, `TRINO_*`, `ICEBERG_CATALOG_URI`, `ICEBERG_WAREHOUSE`, `SPARK_MASTER` | `plan.md` §26 → `.env.example`; Spark loader in `spark/common/config.py` |
 | K8s namespace | `hospital-lake` | `plan.md` §14 |
 
 ---
