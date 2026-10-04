@@ -101,7 +101,82 @@ See [`sitemap.md`](./sitemap.md) for what goes in each directory.
 
 ## 4. Status
 
-🚧 **Milestone 0 — repository skeleton.** Only the directory structure exists; implementation starts in Week 1 (see [`works.md`](./works.md)).
+🚧 **Week 1 — initial batch generator.** A dependency-free Python generator produces synthetic patients, encounters, and lab results as CSV, using the fields in `plan.md`. It supports configurable scale and seed, valid foreign keys, and UTC timestamps. Parquet, the remaining entities, and the service pipeline are still planned (see [`works.md`](./works.md)).
+
+Run from the repository root with Python 3.10+:
+
+```bash
+python generators/batch_generator/generate.py --patients 1000 --seed 42
+python -m unittest discover -s tests/unit -v
+```
+
+The generator writes `patients.csv`, `encounters.csv`, and `lab_results.csv` under `data/generated/` (one row per patient in each file). Use `--output-dir` to choose another directory. Rerunning replaces these three files; the same seed and patient count reproduce the same bytes. These initial clean fixtures are inputs for future batch ingestion; intentional bad-data cases and streaming are not implemented yet.
+
+### TV4 Week 1: Trino row-count smoke check
+
+After TV2 starts MinIO/catalog and TV3 writes an Iceberg fixture with a known
+row count, install the [Trino CLI](https://trino.io/docs/current/client/cli.html)
+and run from the repository root:
+
+```bash
+python scripts/trino_smoke.py --table iceberg.bronze.spark_smoke --expected-rows 3
+```
+
+The table name and count above are examples: supply the actual table written by
+Spark and its expected count. The script does not create or modify data. It runs
+`SELECT count(*)` through Trino and prints `PASS` only when the count matches.
+Exit codes: `0` for success, `1` for query/connection/timeout/result failures,
+`2` for invalid arguments. An empty table succeeds only with `--expected-rows 0`.
+Use `--server http://host:8080`, `--cli /path/to/trino`, and `--timeout 60` as needed.
+Without `--server`, the script uses `TRINO_HOST` (default `localhost`) and
+`TRINO_PORT` (default `8080`). Authentication can use the CLI's own configuration.
+
+Run the unit checks with `python -m unittest discover -s tests/unit -v`.
+These tests simulate CLI responses; they do not certify the live integration.
+The actual Spark → Iceberg → Trino gate remains pending. A matching row count
+alone does not prove all field values.
+
+### TV4 local Trino deployment
+
+`docker-compose.yml` currently provisions **Trino only** (image `trinodb/trino:483`).
+It mounts the Iceberg REST/S3 catalog in `infra/docker/trino/`, uses a 1 GiB JVM
+heap within a 2 GiB container limit, and publishes its port on localhost.
+
+1. Copy `.env.example` to `.env` and set the credentials used by TV2's MinIO.
+2. Have TV2 provide reachable MinIO and Iceberg REST endpoints. Defaults assume
+   services named `minio` and `iceberg-rest` on the same Compose network. For
+   services running on the Docker Desktop host, use `host.docker.internal` in
+   `.env` instead of `localhost` (which refers to the Trino container).
+3. Run `docker compose config --quiet`, then `docker compose up -d --wait trino`.
+4. Inspect failures with `docker compose logs trino`.
+
+The health check runs `SELECT 1`: it proves query-engine readiness only, not
+Iceberg or MinIO connectivity. The table smoke check above verifies the next
+stage once TV3 has written a fixture. Stop this service with `docker compose stop trino`.
+No MinIO/catalog/Spark deployment is included in this TV4 change.
+
+Once the table is available, run all four read-only probes using the CLI bundled
+in the Trino container (no host CLI installation needed):
+
+```bash
+python scripts/trino_smoke.py --compose --check-stack --table iceberg.bronze.spark_smoke --expected-rows 3
+# Equivalent, if GNU Make is installed:
+make trino-smoke TABLE=iceberg.bronze.spark_smoke EXPECTED_ROWS=3
+```
+
+The probes stop at the first failure, labelled `engine`, `catalog`, `count`, or
+`data`. `data` executes `SELECT * ... LIMIT 1` so a successful count alone cannot
+hide a failure reading a data file. Use a stable fixture: concurrent writes can
+change results between queries. Each query has its own `--timeout` (60 seconds
+by default). Empty fixtures cannot prove a data-file read. For a remote/local CLI,
+omit `--compose`; use `--server` as needed. The script does not print sample values.
+
+`make help` lists the available commands. `make test`, `make trino-config`,
+`make trino-up`, and `make trino-stop` wrap the commands above.
+
+Configuration follows the upstream [Trino container documentation](https://trino.io/docs/current/installation/containers.html),
+[REST catalog properties](https://trino.io/docs/current/object-storage/metastores.html#rest-catalog),
+and [S3 settings](https://trino.io/docs/current/object-storage/file-system-s3.html).
 
 ## 5. Team
 

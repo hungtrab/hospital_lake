@@ -9,8 +9,8 @@
 
 ## 1. Current state
 
-The repository is at **Milestone 0 — skeleton only**.
-Directories exist (with `.gitkeep`) but contain **no implementation yet**.
+The repository has an **initial Week 1 batch generator** in `generators/batch_generator/generate.py`, with tests in `tests/unit/test_batch_generator.py`.
+It writes deterministic CSV patients, encounters, and lab results. TV4's `scripts/trino_smoke.py` checks a known table's row count through the Trino CLI; `tests/unit/test_trino_smoke.py` tests its success/failure handling. Trino deployment and live integration remain pending, as do Parquet output and the full pipeline.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
 ---
@@ -37,13 +37,13 @@ Directories exist (with `.gitkeep`) but contain **no implementation yet**.
 └── scripts/             # bootstrap, reset, seed, demo, benchmark
 ```
 
-Still to be created at the root (Milestone 0, `plan.md` §22):
+Root command/config files (Milestone 0, `plan.md` §22):
 
 | File | Purpose |
 |---|---|
-| `Makefile` | Stable command interface (`make help`, `make up`, `make batch`, … — `plan.md` §25) |
-| `.env.example` | All env vars with safe local defaults (`plan.md` §26). Never commit `.env`. |
-| `docker-compose.yml` | Local stack: MinIO, Iceberg REST, Trino, Spark, Kafka, ClickHouse, Grafana |
+| `Makefile` | Implemented `help`, `test`, `trino-config`, `trino-up`, `trino-stop`, `trino-smoke`; other pipeline targets await implementation. |
+| `.env.example` | Implemented Trino/MinIO/catalog settings; credentials intentionally blank. Never commit `.env`. |
+| `docker-compose.yml` | Currently Trino only; MinIO/catalog and the remaining services await their assigned tasks. |
 
 ---
 
@@ -107,6 +107,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Path | Content | TV | Wk |
 |---|---|---|---|
 | `docker/` | Dockerfiles, service configs mounted by `docker-compose.yml` (Trino catalog, MinIO bootstrap, Kafka topic init, …) | TV2 (TV4 for Trino) | 1, 4 |
+| `docker/trino/`, `docker/trino/catalog/` | Implemented single-node Trino config, 1 GiB JVM heap, Iceberg REST/S3 catalog with environment-provided credentials | TV4 | 1 |
 | `k8s/namespace.yaml` | Namespace `hospital-lake` | any | 6 |
 | `k8s/minio/`, `k8s/iceberg/`, `k8s/trino/` | Storage + catalog + query engine manifests, PVCs | TV1 | 6 |
 | `k8s/kafka/` | Strimzi `Kafka` + `KafkaTopic` resources, producer Deployment | TV2 | 6 |
@@ -127,6 +128,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Planned file | Purpose | Wk |
 |---|---|---|
 | `bootstrap.sh` | One-time local setup | 1 |
+| `trino_smoke.py` | TV4: row-count check; `--check-stack` probes engine/catalog/count/data, `--compose` uses container CLI. Uses `TRINO_HOST`/`TRINO_PORT` or `--server`; returns nonzero on failure. | 1 |
 | `reset.sh` | Dev reset (not a substitute for idempotency) | 1+ |
 | `seed.sh` | Generate + load demo dataset | 2 |
 | `demo.sh` | Scripted final demo | 9 |
