@@ -481,18 +481,16 @@ Không merge PR nếu không có cách chạy/test rõ ràng.
 
 ## Review
 
-Mỗi tuần rotate reviewer:
+Không phân công vòng review chéo TV1–TV4. Agent của mỗi thành viên phải tự
+spawn một agent độc lập để audit milestone/PR của mình theo **AGENTS.md §33**:
+Claude dùng **Opus 4.8, effort high**; Codex dùng **gpt-6.1-sol-high**
+(model `gpt-6.1-sol`, effort `high`).
 
-```text
-TV1 reviews TV2
-TV2 reviews TV3
-TV3 reviews TV4
-TV4 reviews TV1
-```
+Audit FAIL thì sửa, kiểm tra lại và audit lại. Audit PASS và các kiểm tra bắt buộc
+đều pass thì agent tự merge PR, không chờ thành viên khác review hay hỏi lại
+xác nhận. Phải merge đúng commit đã audit và tuân thủ branch protection.
 
-Tuần tiếp theo rotate thêm một bước để không hình thành cặp cố định.
-
-Review không thay thế task code cá nhân.
+Audit không thay thế task code cá nhân hay weekly integration gate.
 
 ---
 

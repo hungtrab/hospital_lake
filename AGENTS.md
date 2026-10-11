@@ -1113,7 +1113,26 @@ If there is a migration, provide the migration path.
 
 # 33. Review Rules
 
-Reviewers should verify behavior rather than only style.
+## Independent audit instead of teammate review rotation
+
+The TV1–TV4 reviewer rotation is removed. Each teammate's implementing agent
+**MUST spawn a separate audit agent** for its own milestone/PR before merging.
+The implementing agent's own review does not substitute for this audit.
+
+Use the audit model and reasoning effort specified below:
+
+| Implementing agent | Required audit agent | Reasoning effort |
+|---|---|---|
+| Claude | **Opus 4.8** | **high** |
+| Codex | **gpt-6.1-sol-high** (model `gpt-6.1-sol`, effort `high` when configured separately) | **high** |
+
+Configure the audit agent explicitly; do not silently substitute another model
+or lower effort. If the required model or spawning capability is unavailable,
+report the concrete blocker and leave the PR unmerged.
+
+The auditor must read the mandatory repository documents, inspect the complete
+PR diff and affected consumers/tests, and verify behavior rather than only style.
+It must review independently, without editing the implementation or merging.
 
 Check:
 
@@ -1128,6 +1147,33 @@ Check:
 - unnecessary technology additions.
 
 Reject technically impressive changes that violate the agreed project scope.
+
+## Audit verdict and automatic merge
+
+1. Finish one milestone, run its applicable checks, then commit and push using
+   the human Git identity required by §31.
+2. Spawn the audit agent with the current base/head commit SHAs, task scope,
+   acceptance criteria, diff and validation evidence.
+3. The auditor must return **PASS** or **FAIL**, identify the reviewed base/head
+   SHAs, list findings with file/line references, and state which checks were run
+   or skipped. Missing evidence for a required check prevents PASS; checks outside
+   the PR's scope do not have to run. A local audit does not certify an unrun
+   weekly integration gate.
+4. If the audit fails, fix the findings, rerun affected checks, commit/push the
+   fixes, and obtain a new independent audit of the updated commits.
+5. When the audit returns **PASS**, there are no unresolved blocking findings,
+   and applicable tests and required repository checks pass, the implementing
+   agent **MUST merge its PR automatically without asking the human teammate
+   or waiting for another TV to review**. This rule is the team's authorization
+   to perform that merge.
+6. Record the audit model/effort, reviewed SHAs, verdict and validation summary
+   in the PR description. Merge only the audited head; if the PR head or base
+   changes, update the branch as needed and repeat the audit before merging.
+   Merge prerequisite PRs first for stacked branches. Respect branch protection
+   and required checks; report an actual merge blocker without bypassing it.
+
+This workflow also applies to changes to repository instructions. Keep the
+milestone sequence: implement → check → commit/push → independent audit → merge.
 
 ---
 
