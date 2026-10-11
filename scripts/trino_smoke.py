@@ -5,6 +5,7 @@ import csv
 import io
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -27,7 +28,7 @@ def cli_command(cli="trino", compose=False, server=None):
     command = [cli]
     if compose:
         root = Path(__file__).resolve().parents[1]
-        command = ["docker", "compose", "--project-directory", str(root),
+        command = [*shlex.split(os.environ.get("COMPOSE", "docker compose")), "--project-directory", str(root),
                    "-f", str(root / "docker-compose.yml"), "exec", "-T", "trino", "trino"]
         target = server or "http://localhost:8080"
     return [*command, "--server", target, "--output-format", "CSV"]

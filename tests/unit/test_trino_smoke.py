@@ -5,10 +5,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.trino_smoke import main
+from scripts.trino_smoke import cli_command, main
 
 
 class TrinoSmokeTests(unittest.TestCase):
+    @patch.dict("os.environ", {"COMPOSE": "docker-compose"}, clear=True)
+    def test_standalone_compose_override(self):
+        command = cli_command(compose=True)
+        self.assertEqual(command[0], "docker-compose")
+        self.assertIn("--project-directory", command)
+
     def invoke(self, *extra):
         output = io.StringIO()
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):

@@ -151,23 +151,52 @@ manifest. It writes a JSON report to `results/generator-validation.json`;
 exit code. This validates generated sources; the live Parquet → Bronze → Trino
 gate still needs upstream infrastructure and ingestion implementation.
 
-### Run local MinIO (TV2, Week 1 — task 1)
+### TV2 Week 1: local Lakehouse bootstrap
 
-Requires Docker Engine, Docker Compose v2+ (either `docker compose` or `docker-compose`), Make and curl.
+Requires Docker Engine, Compose v2+, Make, curl and host Python 3.10+.
+Host Java/Spark are not needed for the Week 1 gate: Spark runs in the optional
+Compose `smoke` profile. From the repository root:
 
 ```bash
-make setup
+python3.12 -m venv .venv  # any installed Python 3.10+ can create this venv
+make setup PYTHON=.venv/bin/python
 make config
 make up
 make smoke-minio
+make week1-smoke PYTHON=.venv/bin/python
+make week1-recovery PYTHON=.venv/bin/python
+make test PYTHON=.venv/bin/python
 ```
 
-Expected: MinIO becomes healthy and the smoke check prints `PASS`. Open the console at http://localhost:9001 and sign in with the local credentials in `.env`. The S3 API is at http://localhost:9000; containers on the Compose network use `MINIO_ENDPOINT=http://minio:9000`. Host ports can be changed in `.env`.
+MinIO is built from pinned upstream source; the first build downloads Go and
+source dependencies. If an existing `.env` has the retired upstream image name,
+set `MINIO_IMAGE=hospital-lake/minio:RELEASE.2025-04-22T22-12-26Z`.
+`make up` starts MinIO, runs `minio-init` to create the bucket named by
+`ICEBERG_WAREHOUSE`, then starts Iceberg REST and Trino. An existing bucket is
+checked and preserved. `make bootstrap-bucket` safely repeats that step.
+`make minio-up` starts storage and bucket bootstrap only.
 
-`make up` starts both configured services. To start MinIO alone, run
-`docker compose up -d --wait minio` (or `docker-compose up -d --wait minio`).
+MinIO console: http://localhost:9001; S3 API: http://localhost:9000;
+REST API: http://localhost:8181/v1/config; Trino: http://localhost:8080.
+Ports can be configured in `.env`. Containers use `minio:9000` and
+`iceberg-rest:8181`; host-side jobs need reachable host addresses instead.
+Credentials are local synthetic-data defaults in `.env`, which must not be committed.
 
-`make down` stops the stack while preserving the `minio-data` volume. Running `make up` again reuses that volume. `docker compose down -v` deletes stored data; it is not part of the normal stop command. Use `docker-compose` instead if that is your installed CLI.
+`make week1-smoke` creates a uniquely named temporary Iceberg table in `bronze`,
+writes three synthetic rows with Spark, repeats bucket bootstrap, and verifies
+all values plus `bronze`/`silver`/`gold` visibility through Trino. It purges only
+its temporary fixture afterwards. `make week1-recovery` additionally recreates
+MinIO and catalog containers while the fixture exists, checks it with a fresh
+Spark process and Trino, then cleans up. Run recovery checks before shared
+workloads because they briefly interrupt storage/catalog services.
+`make test-minio PYTHON=.venv/bin/python` separately checks S3 object persistence.
+Live tests are explicit and are skipped by the ordinary regression suite.
+
+`make down` preserves MinIO data and the SQLite catalog volume. `make up` reuses
+them. `docker compose down -v` deletes warehouse and catalog state and is not a
+normal stop command. Make detects `docker compose` or standalone `docker-compose`;
+use `COMPOSE=...` to override. Catalog fixture is a single-node local academic
+setup, not a production HA catalog. See [local architecture](docs/architecture.md).
 
 ### TV4 Week 1: Trino row-count smoke check
 
@@ -190,19 +219,19 @@ Without `--server`, the script uses `TRINO_HOST` (default `localhost`) and
 
 Run the unit checks with `python -m unittest discover -s tests/unit -v`.
 These tests simulate CLI responses; they do not certify the live integration.
-The actual Spark → Iceberg → Trino gate remains pending. A matching row count
-alone does not prove all field values.
+A matching row count alone does not prove all field values. TV2's
+`make week1-smoke` runs an actual Spark fixture and compares complete rows.
 
 ### TV4 local Trino deployment
 
-`docker-compose.yml` currently provisions **MinIO and Trino**. Trino uses image
+`docker-compose.yml` currently provisions **MinIO, Iceberg REST Catalog and Trino**. Trino uses image
 `trinodb/trino:483` and mounts the Iceberg REST/S3 catalog in `infra/docker/trino/`, uses a 1 GiB JVM
 heap within a 2 GiB container limit, and publishes its port on localhost.
 
 1. Run `make setup` to create `.env`. It includes synthetic-data local credentials shared by MinIO and Trino; existing `.env` files are preserved.
-2. MinIO is provided on the shared Compose network. Iceberg REST Catalog and
-   bucket bootstrap remain pending TV2 tasks; the default catalog URI targets
-   the future `iceberg-rest` service. For
+2. MinIO, automatic bucket bootstrap and Iceberg REST Catalog are provided
+   on the shared Compose network. The default catalog URI targets
+   `iceberg-rest:8181`. For
    services running on the Docker Desktop host, use `host.docker.internal` in
    `.env` instead of `localhost` (which refers to the Trino container).
 3. Run `docker compose config --quiet`, then `docker compose up -d --wait trino`.
@@ -211,8 +240,9 @@ heap within a 2 GiB container limit, and publishes its port on localhost.
 The health check runs `SELECT 1`: it proves query-engine readiness only, not
 Iceberg or MinIO connectivity. The table smoke check above verifies the next
 stage once TV3 has written a fixture. Stop this service with `docker compose stop trino`.
-MinIO and Trino share the `hospital-lake` network. Catalog and Spark deployment
-remain pending. MinIO runtime verification is pending after an image pull failure.
+MinIO, catalog and Trino share the `hospital-lake` network. A Spark fixture job
+is provided in the optional `smoke` profile; general batch/stream deployment
+and the reusable SparkSession module are still pending.
 
 Once the table is available, run all four read-only probes using the CLI bundled
 in the Trino container (no host CLI installation needed):
@@ -259,8 +289,9 @@ make test
 
 The shared defaults target the Compose network. For future host-side Spark jobs,
 set reachable `MINIO_ENDPOINT` and `ICEBERG_CATALOG_URI` addresses in `.env`.
-This increment only loads and validates configuration. SparkSession creation,
-connectors, and the live Spark → Iceberg → Trino smoke test remain pending.
+This module loads and validates configuration. The Week 1 Docker smoke job
+reuses it for a fixture-only SparkSession. Reusable SparkSession creation for
+batch/stream jobs remains TV3's pending task.
 
 ### TV4 Week 2: Bronze verification
 
