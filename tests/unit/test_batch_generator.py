@@ -18,7 +18,7 @@ from generators.batch_generator.generate import (
     DEFAULT_CONFIG,
     MANIFEST_NAME,
     GeneratorConfig,
-    generate,
+    generate_tables as generate,
     main,
 )
 from generators.batch_generator.schemas import (
@@ -219,3 +219,35 @@ def test_cli_writes_parquet_and_manifest(tmp_path):
         table = pq.read_table(tmp_path / f"{name}.parquet")
         assert table.num_rows == manifest["row_counts"][name]
         assert table.schema.names == schema.names
+
+
+def test_bronze_verifier_reads_generated_parquet(tmp_path, config):
+    from scripts.verify_bronze import ENTITY_IDS, source_ids
+    from generators.batch_generator.generate import write_dataset
+
+    tables, defects = generate(config)
+    write_dataset(config, tables, defects, tmp_path)
+    for name, table in tables.items():
+        key = ENTITY_IDS[name]
+        assert source_ids(tmp_path, name, key) == table[key].to_pylist()
+
+
+def test_csv_and_parquet_share_data_and_manifest(tmp_path, config):
+    import csv
+    from generators.batch_generator.generate import write_dataset
+    from scripts.verify_bronze import ENTITY_IDS, source_ids
+
+    tables, defects = generate(config)
+    parquet_dir, csv_dir = tmp_path / 'parquet', tmp_path / 'csv'
+    write_dataset(config, tables, defects, parquet_dir)
+    write_dataset(config, tables, defects, csv_dir, 'csv')
+    for name, table in tables.items():
+        assert source_ids(csv_dir, name, ENTITY_IDS[name]) == source_ids(parquet_dir, name, ENTITY_IDS[name])
+        with (csv_dir / f'{name}.csv').open(newline='') as handle:
+            rows = list(csv.DictReader(handle))
+        assert len(rows) == table.num_rows
+        assert list(rows[0]) == table.schema.names
+    assert json.loads((csv_dir / MANIFEST_NAME).read_text())['format'] == 'csv'
+    with pytest.raises(ValueError, match='mixed CSV/Parquet'):
+        write_dataset(config, tables, defects, parquet_dir, 'csv')
+    assert not list(parquet_dir.glob('*.csv'))

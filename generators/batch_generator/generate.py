@@ -13,9 +13,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import logging
 import random
+import sys
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
@@ -25,6 +27,9 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.parquet as pq
 import yaml
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from generators.batch_generator.schemas import (
     CITIES,
@@ -43,6 +48,7 @@ log = logging.getLogger("batch_generator")
 DEFAULT_CONFIG = Path(__file__).with_name("config.yaml")
 DEFAULT_OUTPUT_DIR = Path("data/generated")
 MANIFEST_NAME = "_manifest.json"
+FIELDS = {name: tuple(schema.names) for name, schema in ENTITY_SCHEMAS.items()}
 
 # encounter_type -> (selection weight, min LOS hours, max LOS hours, min labs, max labs)
 ENCOUNTER_PROFILES: dict[str, tuple[float, float, float, int, int]] = {
@@ -67,7 +73,7 @@ class GeneratorConfig:
     invalid_discharge_rate: float
 
     def __post_init__(self) -> None:
-        if self.patients <= 0:
+        if isinstance(self.patients, bool) or not isinstance(self.patients, int) or self.patients <= 0:
             raise ValueError("patients must be > 0")
         if self.end_date <= self.start_date:
             raise ValueError("end_date must be after start_date")
@@ -247,7 +253,7 @@ def inject_defects(
     return counts
 
 
-def generate(cfg: GeneratorConfig) -> tuple[dict[str, pa.Table], dict[str, int]]:
+def generate_tables(cfg: GeneratorConfig) -> tuple[dict[str, pa.Table], dict[str, int]]:
     data = generate_clean(cfg)
     defects = inject_defects(cfg, data)
     tables = {name: pa.Table.from_pydict(data[name], schema=schema) for name, schema in ENTITY_SCHEMAS.items()}
@@ -255,18 +261,34 @@ def generate(cfg: GeneratorConfig) -> tuple[dict[str, pa.Table], dict[str, int]]
 
 
 def write_dataset(
-    cfg: GeneratorConfig, tables: dict[str, pa.Table], defects: dict[str, int], output_dir: Path
+    cfg: GeneratorConfig, tables: dict[str, pa.Table], defects: dict[str, int], output_dir: Path,
+    output_format: str = "parquet",
 ) -> Path:
     """Write one Parquet file per entity plus a manifest. Re-running overwrites (idempotent)."""
+    if output_format not in ("csv", "parquet"):
+        raise ValueError("output_format must be csv or parquet")
+    opposite = "csv" if output_format == "parquet" else "parquet"
+    if any((output_dir / f"{name}.{opposite}").exists() for name in tables):
+        raise ValueError("mixed CSV/Parquet sources: use a separate output directory when changing format")
     output_dir.mkdir(parents=True, exist_ok=True)
     for name, table in tables.items():
-        pq.write_table(table, output_dir / f"{name}.parquet")
+        path = output_dir / f"{name}.{output_format}"
+        if output_format == "parquet":
+            pq.write_table(table, path)
+        else:
+            with path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=table.schema.names)
+                writer.writeheader()
+                for row in table.to_pylist():
+                    writer.writerow({key: value.isoformat() if isinstance(value, datetime) else value
+                                     for key, value in row.items()})
 
     config = asdict(cfg)
     config["start_date"] = cfg.start_date.isoformat()
     config["end_date"] = cfg.end_date.isoformat()
     manifest = {
         "config": config,
+        "format": output_format,
         "row_counts": {name: t.num_rows for name, t in tables.items()},
         "injected_defects": defects,
     }
@@ -275,8 +297,26 @@ def write_dataset(
     return manifest_path
 
 
+def generate(output_dir: Path | str, patients: int = 1000, seed: int = 42) -> dict[str, int]:
+    """Compatibility CSV API; uses the same schema and engine as Parquet.
+
+    Row counts now reflect realistic multiple encounters/labs per patient.
+    This API produces clean fixtures; the CLI uses configurable raw defects.
+    """
+    from dataclasses import replace
+
+    if isinstance(patients, bool) or not isinstance(patients, int) or patients < 1:
+        raise ValueError("patients must be a positive integer")
+    cfg = replace(GeneratorConfig.from_yaml(DEFAULT_CONFIG, patients=patients, seed=seed),
+                  duplicate_rate=0.0, department_alias_rate=0.0, invalid_discharge_rate=0.0)
+    tables, defects = generate_tables(cfg)
+    write_dataset(cfg, tables, defects, Path(output_dir), "csv")
+    return {name: table.num_rows for name, table in tables.items()}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate synthetic hospital batch data (Parquet).")
+    parser.add_argument("--format", choices=("parquet", "csv"), default="parquet")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--patients", type=int, help="override config 'patients'")
     parser.add_argument("--seed", type=int, help="override config 'seed'")
@@ -287,8 +327,8 @@ def main(argv: list[str] | None = None) -> int:
     cfg = GeneratorConfig.from_yaml(args.config, patients=args.patients, seed=args.seed)
 
     started = time.monotonic()
-    tables, defects = generate(cfg)
-    manifest_path = write_dataset(cfg, tables, defects, args.output_dir)
+    tables, defects = generate_tables(cfg)
+    manifest_path = write_dataset(cfg, tables, defects, args.output_dir, args.format)
     log.info(
         json.dumps(
             {
