@@ -19,6 +19,20 @@ def query(command, sql, timeout):
     return list(csv.reader(io.StringIO(result.stdout), strict=True))
 
 
+def cli_command(cli="trino", compose=False, server=None):
+    """Build a Trino batch CLI invocation for host or Compose use."""
+    target = server or "http://{}:{}".format(
+        os.environ.get("TRINO_HOST", "localhost"), os.environ.get("TRINO_PORT", "8080")
+    )
+    command = [cli]
+    if compose:
+        root = Path(__file__).resolve().parents[1]
+        command = ["docker", "compose", "--project-directory", str(root),
+                   "-f", str(root / "docker-compose.yml"), "exec", "-T", "trino", "trino"]
+        target = server or "http://localhost:8080"
+    return [*command, "--server", target, "--output-format", "CSV"]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--table", required=True, help="catalog.schema.table created by Spark")
@@ -36,16 +50,7 @@ def main(argv=None):
         parser.error("--expected-rows must be nonnegative")
     if args.timeout < 1:
         parser.error("--timeout must be positive")
-    server = args.server or "http://{}:{}".format(
-        os.environ.get("TRINO_HOST", "localhost"), os.environ.get("TRINO_PORT", "8080")
-    )
-    command = [args.cli]
-    if args.compose:
-        root = Path(__file__).resolve().parents[1]
-        command = ["docker", "compose", "--project-directory", str(root),
-                   "-f", str(root / "docker-compose.yml"), "exec", "-T", "trino", "trino"]
-        server = args.server or "http://localhost:8080"
-    command += ["--server", server, "--output-format", "CSV"]
+    command = cli_command(args.cli, args.compose, args.server)
     table = ".".join(f'"{part}"' for part in args.table.split("."))
     stage = "count"
     try:

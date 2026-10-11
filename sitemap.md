@@ -42,7 +42,7 @@ Root command/config files (Milestone 0, `plan.md` §22):
 
 | File | Purpose |
 |---|---|
-| `Makefile` | Implemented `help`, `setup`, `config`, `up`, `down`, `smoke-minio`, `test`, `trino-config`, `trino-up`, `trino-stop`, `trino-smoke`; other pipeline targets await implementation. |
+| `Makefile` | Includes `verify-bronze` for TV4 batch validation, plus existing local and Trino targets. |
 | `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; synthetic-data local credentials shared by MinIO/Trino; `MINIO_IMAGE`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT` configure the local storage service. Endpoints use Compose service names. Makefile supports both Compose CLI forms via `COMPOSE`; the existing Python Trino smoke client requires `docker compose` in container mode. Never commit `.env`. |
 | `docker-compose.yml` | MinIO and Trino share the `hospital-lake` network; `minio-data` persists storage. Catalog and remaining services await their assigned tasks. |
 
@@ -91,7 +91,7 @@ Docs describe **what exists**, never planned-but-unbuilt features (`AGENTS.md` �
 | Path | Planned files | Responsibility | TV | Wk |
 |---|---|---|---|---|
 | `iceberg/` | `create_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | Iceberg DDL + partitioning (`plan.md` §20) | TV2 | 2–3 |
-| `trino/` | `queries.sql` | Historical analytical queries (`plan.md` §12.1) | TV4 | 1–3 |
+| `trino/` | `verify_bronze.sql`, planned `queries.sql` | Source-controlled Bronze count/ID queries; historical analytics later (`plan.md` §12.1) | TV4 | 1–3 |
 | `clickhouse/` | `schema.sql`, `views.sql` | Realtime serving tables: `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | TV3/TV4 | 5 |
 
 ### 3.6 `dashboard/grafana/` — Serving · TV4
@@ -121,7 +121,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Path | Content | Wk |
 |---|---|---|
 | `unit/` | Generators, schemas, normalization, validation, aggregation logic (pytest) | 1+ |
-| `integration/` | Spark → Iceberg, Trino → Iceberg, Kafka → Spark, Spark → ClickHouse | 1+ |
+| `integration/` | Bronze verifier contract checks; live Spark → Iceberg, Trino → Iceberg, Kafka → Spark, Spark → ClickHouse when services are available | 1+ |
 | `e2e/` | Event → Kafka → Streaming → ClickHouse/Trino assertions; full regression suite | 5, 8 |
 
 ### 3.9 `scripts/` — Automation
@@ -130,6 +130,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 |---|---|---|
 | `bootstrap.sh` | One-time local setup | 1 |
 | `trino_smoke.py` | TV4: row-count check; `--check-stack` probes engine/catalog/count/data, `--compose` uses container CLI. Uses `TRINO_HOST`/`TRINO_PORT` or `--server`; returns nonzero on failure. | 1 |
+| `verify_bronze.py` | TV4: compare CSV/Parquet source count and stable-ID checksum with one Bronze `_batch_id` through Trino; `make verify-bronze` | 2 |
 | `reset.sh` | Dev reset (not a substitute for idempotency) | 1+ |
 | `seed.sh` | Generate + load demo dataset | 2 |
 | `demo.sh` | Scripted final demo | 9 |

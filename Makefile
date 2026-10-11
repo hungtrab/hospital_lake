@@ -1,11 +1,11 @@
 PYTHON ?= python3
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then printf 'docker compose'; else printf 'docker-compose'; fi)
 
-.PHONY: help setup up down config smoke-minio test trino-config trino-up trino-stop trino-smoke
+.PHONY: help setup up down config smoke-minio test trino-config trino-up trino-stop trino-smoke verify-bronze
 .DEFAULT_GOAL := help
 
 help:
-	@printf '%s\n' 'make setup       Create .env without replacing an existing file' 'make config      Validate Compose configuration' 'make up          Start local services and wait for health checks' 'make down        Stop local services; preserve data volumes' 'make smoke-minio Verify MinIO readiness through its published port' 'make test        Run unit tests' 'make trino-config Validate Compose configuration' 'make trino-up    Start Trino and wait for readiness' 'make trino-stop  Stop Trino' 'make trino-smoke TABLE=iceberg.bronze.spark_smoke EXPECTED_ROWS=3'
+	@printf '%s\n' 'make setup       Create .env without replacing an existing file' 'make config      Validate Compose configuration' 'make up          Start local services and wait for health checks' 'make down        Stop local services; preserve data volumes' 'make smoke-minio Verify MinIO readiness through its published port' 'make test        Run unit and verifier contract tests' 'make trino-config Validate Compose configuration' 'make trino-up    Start Trino and wait for readiness' 'make trino-stop  Stop Trino' 'make trino-smoke TABLE=iceberg.bronze.spark_smoke EXPECTED_ROWS=3' 'make verify-bronze BATCH_ID=<id> [ENTITIES="patients encounters ..."]'
 
 setup:
 	@test -f .env || cp .env.example .env
@@ -26,6 +26,7 @@ smoke-minio:
 
 test:
 	$(PYTHON) -m unittest discover -s tests/unit -v
+	$(PYTHON) -m unittest discover -s tests/integration -v
 
 trino-config:
 	$(COMPOSE) config --quiet
@@ -38,3 +39,9 @@ trino-stop:
 
 trino-smoke:
 	$(PYTHON) scripts/trino_smoke.py --compose --check-stack --table "$(TABLE)" --expected-rows "$(EXPECTED_ROWS)"
+
+ENTITIES ?= patients encounters lab_results medications vitals bed_events
+INPUT_DIR ?= data/generated
+
+verify-bronze:
+	$(PYTHON) -m scripts.verify_bronze --compose --input-dir "$(INPUT_DIR)" --batch-id "$(BATCH_ID)" --entities $(ENTITIES)
