@@ -223,6 +223,27 @@ set reachable `MINIO_ENDPOINT` and `ICEBERG_CATALOG_URI` addresses in `.env`.
 This increment only loads and validates configuration. SparkSession creation,
 connectors, and the live Spark → Iceberg → Trino smoke test remain pending.
 
+### TV4 Week 2: Bronze verification
+
+`make verify-bronze BATCH_ID=<id>` compares generated CSV or Parquet files
+against the matching `iceberg.bronze.*_raw` tables for one `_batch_id`. It checks
+row counts and a SHA-256 checksum of sorted stable IDs. The queries live in
+`sql/trino/verify_bronze.sql`; the harness is `scripts/verify_bronze.py`.
+Missing, replaced, or duplicated IDs and query failures return a nonzero exit
+code. Each entity reports its own PASS or FAIL.
+
+The current generator writes patients, encounters, and lab results. Until the
+other entity sources exist, run:
+
+```bash
+make verify-bronze BATCH_ID=<id> ENTITIES="patients encounters lab_results"
+```
+
+For a host Trino CLI, run `python -m scripts.verify_bronze --batch-id <id>
+--entities patients encounters lab_results` and optionally supply `--server`.
+Parquet input requires `pyarrow`. The checksum covers IDs; it does not validate
+non-key values. A live run requires completed Bronze ingestion with `_batch_id`.
+
 ## 5. Team
 
 Four equal members (TV1–TV4). Work allocation and weekly integration gates are defined in [`works.md`](./works.md).
