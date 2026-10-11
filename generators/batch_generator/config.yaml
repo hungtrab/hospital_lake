@@ -18,6 +18,17 @@ encounters_per_patient:
   min: 1
   max: 5
 
+medications_per_encounter:
+  min: 1
+  max: 3
+
+vitals_per_encounter:
+  min: 1
+  max: 5
+
+# Within-department bed changes; outpatient encounters do not occupy beds.
+bed_transfer_rate: 0.15
+
 # Intentional raw-data defects so Silver has real cleaning work to do.
 # Set all to 0.0 for a perfectly clean dataset.
 data_quality:

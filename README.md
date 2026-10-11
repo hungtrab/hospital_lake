@@ -101,9 +101,9 @@ See [`sitemap.md`](./sitemap.md) for what goes in each directory.
 
 ## 4. Status
 
-**TV1 Week 1 generator integrated with the local stack commands.** A shared
+**TV1 generator — Week 1 integrated; all six Week 2 entities implemented.** A shared
 Arrow schema and generator produce patients, encounters, and lab results in
-Parquet (default) or CSV. Patient IDs are `P00000001`, encounter IDs
+Parquet (default) or CSV; Week 2 also includes `medications`, `vitals` and `bed_events`. Patient IDs are `P00000001`, encounter IDs
 `E000000001`, and lab IDs `L0000000001`; timestamps use UTC. Raw data includes
 configurable exact duplicates, department aliases, and invalid discharge times.
 `_manifest.json` records configuration, row counts, and injected defect counts.
@@ -122,7 +122,34 @@ row counts, using clean data from the same engine. Counts for encounters and lab
 now vary with patient journeys; the former one-row-per-patient assumption and
 `patient-...` IDs must be replaced with manifest counts and actual stable IDs.
 Direct script invocation supports the same flags; add `--format csv` for CSV.
-The remaining entities and the live batch integration remain pending.
+`medications_per_encounter` configures order counts. Medication IDs use
+`M<encounter-number>-<order-number>`; orders reference valid patients/encounters
+and their times stay inside the clean encounter. `vitals_per_encounter` controls
+observation counts; units are heart rate bpm, SpO2 percent, blood pressure mmHg
+and temperature Celsius. Measurement IDs use `V<encounter-number>-<sample-number>`.
+Bed events use `assigned`, optional `transferred`, then `released` only on
+discharge; outpatient encounters have no bed journey. A transfer names the new
+bed and closes the previous assignment within the same department. Bed IDs are
+synthetic and scoped to the encounter, preventing double booking; they do not
+represent a finite hospital inventory. `bed_transfer_rate` controls transfers.
+Live batch integration remains pending.
+
+### TV1 Week 2: validate the complete generated dataset
+
+```bash
+make generate-data PATIENTS=10000
+make verify-generated INPUT_DIR=data/generated
+make validate-generator SCALES="10000 100000"
+```
+
+`verify-generated` checks actual Parquet schema, counts, non-null primary keys,
+patient/encounter foreign keys, and duplicate counts against the manifest for
+all six entities. `validate-generator` runs each scale twice in a temporary
+directory, validates both outputs and compares every file's SHA-256 plus the
+manifest. It writes a JSON report to `results/generator-validation.json`;
+`GENERATOR_REPORT` changes that path. Invalid data/contracts return a nonzero
+exit code. This validates generated sources; the live Parquet → Bronze → Trino
+gate still needs upstream infrastructure and ingestion implementation.
 
 ### Run local MinIO (TV2, Week 1 — task 1)
 
@@ -244,15 +271,14 @@ row counts and a SHA-256 checksum of sorted stable IDs. The queries live in
 Missing, replaced, or duplicated IDs and query failures return a nonzero exit
 code. Each entity reports its own PASS or FAIL.
 
-The current generator writes patients, encounters, and lab results as Parquet or CSV. Until the
-other entity sources exist, run:
+The current generator writes all six entities as Parquet or CSV. To verify all six sources after Bronze ingestion, run:
 
 ```bash
-make verify-bronze BATCH_ID=<id> ENTITIES="patients encounters lab_results"
+make verify-bronze BATCH_ID=<id> ENTITIES="patients encounters lab_results medications vitals bed_events"
 ```
 
 For a host Trino CLI, run `python -m scripts.verify_bronze --batch-id <id>
---entities patients encounters lab_results` and optionally supply `--server`.
+--entities patients encounters lab_results medications vitals bed_events` and optionally supply `--server`.
 Parquet input requires `pyarrow`. The checksum covers IDs; it does not validate
 non-key values. A live run requires completed Bronze ingestion with `_batch_id`.
 
