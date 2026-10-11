@@ -45,8 +45,8 @@ make test PYTHON=.venv/bin/python
 
 First runs need network access for base images, MinIO build dependencies and
 Spark Maven connectors. No host Spark/Java installation is required by this gate.
-The gate uses the shared `SparkConfig` and a dedicated temporary fixture job;
-the reusable SparkSession module for batch/stream remains TV3's task.
+The gate uses the shared `SparkConfig`, `spark/common/iceberg.py` session helper,
+and a dedicated temporary fixture job. Production ingestion remains TV3's task.
 
 The smoke job writes three exact rows to a UUID-named Iceberg table, re-runs
 bucket bootstrap, checks all values through Trino, and verifies three namespaces.

@@ -21,8 +21,9 @@ SQLite-backed Iceberg REST Catalog, Trino dependencies and a Docker Spark smoke
 profile. `week1-smoke` and `week1-recovery` check exact Spark/Trino rows and
 container recreation; the live Week 1 recovery gate passed locally on 2026-10-12.
 TV4 smoke checks remain available.
-TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. SparkSession and connector setup remain pending.
+TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. The Week 1 SparkSession setup is now shared in `spark/common/iceberg.py` and reused by fixtures/bootstrap; general batch ingestion remains pending.
 TV4's Week 3 `spark/batch/silver_to_gold.py` computes four Gold metrics from Silver; `scripts/run_gold.py` submits it with shared Spark configuration. Exact-value local Spark tests and five Trino query examples exist. Live Gold validation still needs Silver tables and their ingestion pipeline.
+TV2 Week 2 provides six Bronze DDL contracts, daily hidden partitions and an idempotent, drift-checking table bootstrap. `bronze-smoke` validates isolated Parquet fixtures, S3 metadata, Trino compatibility, raw preservation and reruns. Production Bronze ingestion remains TV3's pending task.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
 ---
@@ -54,9 +55,9 @@ Root command/config files (Milestone 0, `plan.md` §22):
 | File | Purpose |
 |---|---|
 | `requirements.txt`, `pyproject.toml` | Generator dependencies and pytest discovery for both pytest/unittest suites. |
-| `Makefile` | Week 1 commands: `minio-up`, `minio-stop`, `bootstrap-bucket`, `test-minio`, `week1-smoke`, `week1-recovery`. `setup` installs dependencies; `generate-data` writes configurable Parquet/CSV; `test` runs both styles with pytest. `verify-generated` checks Parquet source contracts; `validate-generator` repeats 10k/100k generation and records deterministic hashes. Includes `verify-bronze` and `gold` for TV4 batch validation and Gold submission, plus local and Trino targets. |
+| `Makefile` | Week 2: `bootstrap-bronze`, `bronze-smoke`. Week 1 commands: `minio-up`, `minio-stop`, `bootstrap-bucket`, `test-minio`, `week1-smoke`, `week1-recovery`. `setup` installs dependencies; `generate-data` writes configurable Parquet/CSV; `test` runs both styles with pytest. `verify-generated` checks Parquet source contracts; `validate-generator` repeats 10k/100k generation and records deterministic hashes. Includes `verify-bronze` and `gold` for TV4 batch validation and Gold submission, plus local and Trino targets. |
 | `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; synthetic-data local credentials shared by MinIO/Trino; `MINIO_IMAGE`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`, `ICEBERG_REST_PORT` configure the local storage service. Endpoints use Compose service names. Makefile supports both Compose CLI forms via `COMPOSE`; Trino clients accept the `COMPOSE` override, which Make propagates. Never commit `.env`. |
-| `docker-compose.yml` | MinIO, `minio-init`, Iceberg REST, Trino and the optional Spark smoke profile share `hospital-lake`; `minio-data` persists objects, `iceberg-catalog` persists SQLite metadata, `spark-ivy` caches fixture connectors. |
+| `docker-compose.yml` | MinIO, `minio-init`, Iceberg REST, Trino and optional Spark/Bronze bootstrap/smoke profiles share `hospital-lake`; `minio-data` persists objects, `iceberg-catalog` persists SQLite metadata, `spark-ivy` caches fixture connectors. |
 
 ---
 
@@ -109,7 +110,7 @@ ingestion remains pending. CSV API clean fixtures and CLI raw fixtures share the
 
 | Path | Planned files | Responsibility | TV | Wk |
 |---|---|---|---|---|
-| `common/` | `config.py`, `schemas.py`, `iceberg.py` | Env-based config, SparkSession + Iceberg/MinIO setup, shared schemas, data-quality/quarantine helpers. **Reuse, don't duplicate.** | TV3 | 1, 3 |
+| `common/` | `config.py`, `schemas.py`, `iceberg.py`, `bronze.py` | Implemented env config, shared SparkSession and Bronze DDL loader/validation. Shared processing schemas/data-quality helpers remain planned. **Reuse, don't duplicate.** | TV3 | 1, 3 |
 | `batch/` | `ingest_bronze.py`, `bronze_to_silver.py`, `silver_to_gold.py`, `main.py` | raw Parquet → Bronze → Silver → Gold. TV4's `silver_to_gold.py` builds four historical Gold tables with a deterministic cutoff and full-table overwrite. | TV3 (Bronze), TV1/TV2 (Silver), TV4 (Gold) | 2–3 |
 | `streaming/` | `kafka_to_bronze.py`, `realtime_aggregates.py`, `main.py` | Kafka → validate → DLQ → dedup by `event_id` → watermark → Iceberg Bronze + realtime aggregates → ClickHouse. | TV3, TV4 (sink/DLQ), TV1/TV2 (aggregates) | 4–5 |
 
@@ -117,7 +118,7 @@ ingestion remains pending. CSV API clean fixtures and CLI raw fixtures share the
 
 | Path | Planned files | Responsibility | TV | Wk |
 |---|---|---|---|---|
-| `iceberg/` | `create_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | Iceberg DDL; TV4's four Gold table definitions are implemented | TV2/TV4 | 2–3 |
+| `iceberg/` | `create_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | TV2 six Bronze definitions (nullable domain fields, required metadata, format v2); TV4 four Gold definitions. Silver DDL pending | TV2/TV4 | 2–3 |
 | `trino/` | `verify_bronze.sql`, `queries.sql` | Bronze ID checks and five historical Gold queries | TV4 | 1–3 |
 | `clickhouse/` | `schema.sql`, `views.sql` | Realtime serving tables: `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | TV3/TV4 | 5 |
 
@@ -150,7 +151,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Path | Content | Wk |
 |---|---|---|
 | `unit/` | Generators, schemas, normalization, validation, aggregation logic (unittest); `test_gold_metrics.py` uses local Spark | 1+ |
-| `integration/` | `spark_iceberg_smoke.py` supplies write/read/purge fixture actions; `test_minio.py` is an opt-in S3 persistence test. Bronze verifier contract checks; live Spark → Iceberg, Trino → Iceberg, Kafka → Spark, Spark → ClickHouse when services are available | 1+ |
+| `integration/` | `bronze_contract_smoke.py` writes/checks/drops only UUID-isolated fixtures and tests drift refusal; `spark_iceberg_smoke.py` supplies write/read/purge fixture actions; `test_minio.py` is an opt-in S3 persistence test. Bronze verifier contract checks; live Spark → Iceberg, Trino → Iceberg, Kafka → Spark, Spark → ClickHouse when services are available | 1+ |
 | `e2e/` | Event → Kafka → Streaming → ClickHouse/Trino assertions; full regression suite | 5, 8 |
 
 ### 3.9 `scripts/` — Automation
@@ -158,6 +159,8 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Planned file | Purpose | Wk |
 |---|---|---|
 | `bootstrap.sh` | One-time local setup | 1 |
+| `bootstrap_bronze.py` | TV2 Week 2: Spark job creating/validating six raw tables without rewriting data | 2 |
+| `bronze_smoke.py` | Host orchestration for isolated Parquet/Spark/S3/Trino contract checks, raw defects, reruns and explicit fixture cleanup | 2 |
 | `lakehouse_smoke.py` | TV2 Week 1: service checks, repeated bucket bootstrap, exact Spark/Trino row checks, optional storage/catalog recreation and isolated fixture cleanup | 1 |
 | `trino_smoke.py` | TV4: row-count check; `--check-stack` probes engine/catalog/count/data, `--compose` uses container CLI. Uses `TRINO_HOST`/`TRINO_PORT` or `--server`; returns nonzero on failure. | 1 |
 | `verify_bronze.py` | TV4: compare CSV/Parquet source count and stable-ID checksum with one Bronze `_batch_id` through Trino; `make verify-bronze` | 2 |

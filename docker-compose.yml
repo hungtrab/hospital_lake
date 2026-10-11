@@ -139,6 +139,32 @@ services:
     networks:
       - hospital-lake
 
+  bronze-bootstrap:
+    extends:
+      service: spark-smoke
+    entrypoint:
+      - /opt/spark/bin/spark-submit
+      - --driver-memory
+      - 512m
+      - --conf
+      - spark.jars.ivy=/tmp/ivy
+      - --packages
+      - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.0,org.apache.iceberg:iceberg-aws-bundle:1.9.0
+      - scripts/bootstrap_bronze.py
+
+  bronze-smoke:
+    extends:
+      service: bronze-bootstrap
+    entrypoint:
+      - /opt/spark/bin/spark-submit
+      - --driver-memory
+      - 512m
+      - --conf
+      - spark.jars.ivy=/tmp/ivy
+      - --packages
+      - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.0,org.apache.iceberg:iceberg-aws-bundle:1.9.0
+      - tests/integration/bronze_contract_smoke.py
+
 volumes:
   minio-data:
   iceberg-catalog:

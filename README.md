@@ -241,8 +241,8 @@ The health check runs `SELECT 1`: it proves query-engine readiness only, not
 Iceberg or MinIO connectivity. The table smoke check above verifies the next
 stage once TV3 has written a fixture. Stop this service with `docker compose stop trino`.
 MinIO, catalog and Trino share the `hospital-lake` network. A Spark fixture job
-is provided in the optional `smoke` profile; general batch/stream deployment
-and the reusable SparkSession module are still pending.
+is provided in the optional `smoke` profile. Shared SparkSession creation is
+available in `spark/common/iceberg.py`; production batch/stream jobs remain pending.
 
 Once the table is available, run all four read-only probes using the CLI bundled
 in the Trino container (no host CLI installation needed):
@@ -289,9 +289,47 @@ make test
 
 The shared defaults target the Compose network. For future host-side Spark jobs,
 set reachable `MINIO_ENDPOINT` and `ICEBERG_CATALOG_URI` addresses in `.env`.
-This module loads and validates configuration. The Week 1 Docker smoke job
-reuses it for a fixture-only SparkSession. Reusable SparkSession creation for
-batch/stream jobs remains TV3's pending task.
+This module loads and validates configuration. The Week 1 Docker smoke job and
+Week 2 Bronze bootstrap reuse `spark/common/iceberg.py` to create SparkSession.
+TV3's production ingestion job remains pending.
+
+### TV2 Week 2: Bronze table contracts
+
+With the Week 1 stack running:
+
+```bash
+make bootstrap-bronze
+make bronze-smoke PYTHON=.venv/bin/python
+```
+
+`sql/iceberg/create_bronze_tables.sql` is Spark SQL for all six
+`iceberg.bronze.*_raw` tables. `bootstrap-bronze` runs a short Docker Spark job,
+so host Spark/Java are not needed. The tables match the six Parquet source
+contracts, keep raw domain fields nullable, and require ingestion metadata:
+`_source`, `_ingested_at`, `_batch_id`, `_schema_version`; `_event_id` is optional.
+UTC source timestamps use Iceberg timestamps with time zone. Duplicates,
+department aliases and invalid domain values remain raw; Silver handles cleaning.
+CSV values that cannot be represented by the typed source schema require
+traceable quarantine in the future ingestion job, not silent casts to null.
+
+Bootstrap validates existing schemas, current partition specs, format version,
+write properties and S3 metadata location before creating missing tables. Normal
+reruns do not replace tables, change partitions or rewrite data. If a contract
+has drifted, the command fails and requires an explicit migration.
+
+`bronze-smoke` generates a temporary 32-patient six-entity Parquet dataset,
+uses a UUID smoke namespace, writes intentional duplicates/invalid vitals,
+compares complete Spark values and Trino ID checksums, reads metadata JSON
+through authenticated MinIO S3, verifies bootstrap reruns preserve metadata,
+and proves incompatible existing schemas/partitions/properties are rejected.
+Only its temporary namespace is purged; canonical Bronze tables and datasets
+are preserved. It reports file count, average bytes and partition count for
+these tiny fixtures, not a throughput benchmark.
+
+Partition choices and the handoff to TV3 ingestion are in
+[the data model](docs/data-model.md). Production `ingest_bronze.py` remains TV3's
+Week 2 task; this table-contract check does not certify the full weekly
+`generate-data → batch-bronze → verify-bronze` integration gate.
 
 ### TV4 Week 2: Bronze verification
 
