@@ -85,3 +85,53 @@ def test_vital_invalid_config(clean_dataset):
     config, _, _ = clean_dataset
     with pytest.raises(ValueError, match='vitals_per_encounter'):
         replace(config, vitals_min=-1)
+
+
+def test_bed_event_journeys(clean_dataset):
+    from generators.batch_generator.schemas import BED_EVENT_TYPES
+
+    config, tables, encounters = clean_dataset
+    rows = tables['bed_events'].to_pylist()
+    assert tables['bed_events'].schema.equals(ENTITY_SCHEMAS['bed_events'])
+    assert len({row['event_id'] for row in rows}) == len(rows)
+    journeys = {}
+    bed_owners = {}
+    for row in rows:
+        encounter = encounters[row['encounter_id']]
+        assert row['patient_id'] == encounter['patient_id']
+        assert row['department'] == encounter['department']
+        assert row['event_type'] in BED_EVENT_TYPES
+        assert encounter['admission_time'] <= row['event_time'] <= (encounter['discharge_time'] or config.end_date)
+        owner = bed_owners.setdefault(row['bed_id'], row['encounter_id'])
+        assert owner == row['encounter_id'], 'bed shared by unrelated encounters'
+        journeys.setdefault(row['encounter_id'], []).append(row)
+    assert set(journeys) == {key for key, row in encounters.items() if row['encounter_type'] != 'outpatient'}
+    transfers = 0
+    for key, journey in journeys.items():
+        encounter = encounters[key]
+        assert journey[0]['event_type'] == 'assigned'
+        assert journey[0]['event_time'] == encounter['admission_time']
+        assert [r['event_time'] for r in journey] == sorted(r['event_time'] for r in journey)
+        current_bed = journey[0]['bed_id']
+        for row in journey[1:]:
+            if row['event_type'] == 'transferred':
+                assert row['bed_id'] != current_bed
+                current_bed = row['bed_id']
+                transfers += 1
+            else:
+                assert row['event_type'] == 'released'
+                assert row['bed_id'] == current_bed
+                assert row['event_time'] == encounter['discharge_time']
+        if encounter['discharge_time'] is None:
+            assert all(r['event_type'] != 'released' for r in journey)
+        else:
+            assert journey[-1]['event_type'] == 'released'
+    assert transfers > 0
+
+
+def test_bed_transfer_rate_controls_events(clean_dataset):
+    config, _, _ = clean_dataset
+    tables, _ = generate_tables(replace(config, bed_transfer_rate=0))
+    assert 'transferred' not in tables['bed_events']['event_type'].to_pylist()
+    with pytest.raises(ValueError, match='bed_transfer_rate'):
+        replace(config, bed_transfer_rate=1.1)

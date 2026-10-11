@@ -1,6 +1,6 @@
 """Synthetic hospital batch data generator.
 
-Produces Parquet/CSV files for patients, encounters, labs, medications and vitals with valid
+Produces Parquet/CSV for all six core entities with valid
 patient -> encounter -> lab_result foreign keys and a deterministic seed.
 A small, configurable fraction of raw-data defects (duplicates, department
 aliases, invalid discharge times) is injected afterwards so the Silver layer
@@ -32,6 +32,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from generators.batch_generator.schemas import (
+    BED_EVENT_SCHEMA,
     CITIES,
     DEPARTMENT_ALIASES,
     DEPARTMENTS,
@@ -78,6 +79,7 @@ class GeneratorConfig:
     medications_max: int = 3
     vitals_min: int = 1
     vitals_max: int = 5
+    bed_transfer_rate: float = 0.15
 
     def __post_init__(self) -> None:
         if isinstance(self.patients, bool) or not isinstance(self.patients, int) or self.patients <= 0:
@@ -95,7 +97,7 @@ class GeneratorConfig:
             raise ValueError(f"unknown departments {sorted(unknown)}; allowed: {DEPARTMENTS}")
         if not {"EMERGENCY", "ICU"} <= set(self.departments) or not self.ward_departments:
             raise ValueError("departments must include EMERGENCY, ICU and at least one ward")
-        for name in ("duplicate_rate", "department_alias_rate", "invalid_discharge_rate"):
+        for name in ("duplicate_rate", "department_alias_rate", "invalid_discharge_rate", "bed_transfer_rate"):
             if not 0.0 <= getattr(self, name) <= 1.0:
                 raise ValueError(f"{name} must be within [0, 1]")
 
@@ -126,6 +128,7 @@ class GeneratorConfig:
             medications_max=int(medications.get("max", 3)),
             vitals_min=int(vitals.get("min", 1)),
             vitals_max=int(vitals.get("max", 5)),
+            bed_transfer_rate=float(raw.get("bed_transfer_rate", 0.15)),
         )
 
 
@@ -236,7 +239,8 @@ def generate_clean(cfg: GeneratorConfig) -> dict[str, dict[str, list[Any]]]:
 
     return {"patients": patients, "encounters": encounters, "lab_results": labs,
             "medications": generate_medications(cfg, encounters),
-            "vitals": generate_vitals(cfg, encounters)}
+            "vitals": generate_vitals(cfg, encounters),
+            "bed_events": generate_bed_events(cfg, encounters)}
 
 
 def _encounter_rows(encounters: dict[str, list[Any]]):
@@ -280,6 +284,37 @@ def generate_vitals(cfg: GeneratorConfig, encounters: dict[str, list[Any]]) -> d
                     systolic_bp=rng.randint(100, 160), diastolic_bp=rng.randint(55, 95),
                     temperature=round(rng.uniform(36, 39), 1), measured_at=measured_at)
     return vitals
+
+
+def generate_bed_events(cfg: GeneratorConfig, encounters: dict[str, list[Any]]) -> dict[str, list[Any]]:
+    """Emit a bed journey for non-outpatient encounters.
+
+    Synthetic bed IDs are scoped to an encounter, avoiding double booking.
+    A transfer closes the previous assignment and names the new bed, in the
+    same department; an open encounter never emits a final release.
+    """
+    events = _empty_columns(BED_EVENT_SCHEMA)
+    for encounter in _encounter_rows(encounters):
+        if encounter["encounter_type"] == "outpatient":
+            continue
+        encounter_id = encounter["encounter_id"]
+        rng = random.Random(cfg.seed + 30_000 + int(encounter_id[1:]))
+        department = encounter["department"]
+        bed_id = f"{department}-{encounter_id}-A"
+        journey = [("assigned", encounter["admission_time"], bed_id)]
+        end = encounter["discharge_time"] or cfg.end_date
+        if rng.random() < cfg.bed_transfer_rate and (end - encounter["admission_time"]).total_seconds() > 2:
+            transfer = encounter["admission_time"] + (end - encounter["admission_time"]) / 2
+            bed_id = f"{department}-{encounter_id}-B"
+            journey.append(("transferred", transfer.replace(microsecond=0), bed_id))
+        if encounter["discharge_time"] is not None:
+            journey.append(("released", encounter["discharge_time"], bed_id))
+        for index, (event_type, event_time, event_bed) in enumerate(journey, 1):
+            _append(events, event_id=f"B{encounter_id[1:]}-{index:02d}",
+                    patient_id=encounter["patient_id"], encounter_id=encounter_id,
+                    department=department, bed_id=event_bed,
+                    event_type=event_type, event_time=event_time)
+    return events
 
 
 def inject_defects(

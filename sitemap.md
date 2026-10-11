@@ -94,7 +94,12 @@ in CSV; IDs are P/E/L-prefixed zero-padded strings. `_manifest.json` contains
 `M<encounter-number>-<order-number>` IDs; count is configured by
 `medications_per_encounter`. `vitals` uses `V<encounter-number>-<sample-number>`
 IDs and `vitals_per_encounter` counts, with canonical bpm/percent/mmHg/Celsius
-units and observations inside clean encounters. Bed events remain planned. CSV API clean fixtures and CLI raw fixtures share the same schema.
+units and observations inside clean encounters. `bed_events` uses `B<encounter-number>-<event-number>`
+IDs and assigned/transferred/released journeys for non-outpatient encounters.
+Transfers name the new bed and close the prior assignment in the same department;
+open encounters have no release. Bed IDs are synthetic per encounter, not a fixed
+inventory. `bed_transfer_rate` controls transfers. All six source entities exist;
+10k/100k scale validation and live Bronze ingestion remain pending. CSV API clean fixtures and CLI raw fixtures share the same schema.
 
 ### 3.4 `spark/` — Batch + Speed processing
 

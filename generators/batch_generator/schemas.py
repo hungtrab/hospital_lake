@@ -141,6 +141,20 @@ VITAL_SCHEMA = pa.schema(
     ]
 )
 
+BED_EVENT_TYPES = ("assigned", "transferred", "released")
+
+BED_EVENT_SCHEMA = pa.schema(
+    [
+        pa.field("event_id", pa.string(), nullable=False),
+        pa.field("patient_id", pa.string(), nullable=False),
+        pa.field("encounter_id", pa.string(), nullable=False),
+        pa.field("department", pa.string()),
+        pa.field("bed_id", pa.string()),
+        pa.field("event_type", pa.string()),
+        pa.field("event_time", TS),
+    ]
+)
+
 # Output file stem -> schema. Stems match the Bronze table names without "_raw".
 ENTITY_SCHEMAS: dict[str, pa.Schema] = {
     "patients": PATIENT_SCHEMA,
@@ -148,4 +162,5 @@ ENTITY_SCHEMAS: dict[str, pa.Schema] = {
     "lab_results": LAB_RESULT_SCHEMA,
     "medications": MEDICATION_SCHEMA,
     "vitals": VITAL_SCHEMA,
+    "bed_events": BED_EVENT_SCHEMA,
 }
