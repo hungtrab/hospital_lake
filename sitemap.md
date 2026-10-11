@@ -90,8 +90,9 @@ Docs describe **what exists**, never planned-but-unbuilt features (`AGENTS.md` �
 Batch source contract: `patients`, `encounters`, `lab_results` files use the
 fields in `plan.md` §5, with typed UTC timestamps in Parquet and ISO UTC strings
 in CSV; IDs are P/E/L-prefixed zero-padded strings. `_manifest.json` contains
-`config`, `format`, `row_counts`, `injected_defects`. Missing Week 2 entities remain
-planned. CSV API clean fixtures and CLI raw fixtures share the same schema.
+`config`, `format`, `row_counts`, `injected_defects`. Week 2 `medications` is implemented with fields from `plan.md` §5 and
+`M<encounter-number>-<order-number>` IDs; count is configured by
+`medications_per_encounter`. Vitals and bed events remain planned. CSV API clean fixtures and CLI raw fixtures share the same schema.
 
 ### 3.4 `spark/` — Batch + Speed processing
 

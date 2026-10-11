@@ -101,9 +101,9 @@ See [`sitemap.md`](./sitemap.md) for what goes in each directory.
 
 ## 4. Status
 
-**TV1 Week 1 generator integrated with the local stack commands.** A shared
+**TV1 generator — Week 1 integrated; Week 2 medications implemented.** A shared
 Arrow schema and generator produce patients, encounters, and lab results in
-Parquet (default) or CSV. Patient IDs are `P00000001`, encounter IDs
+Parquet (default) or CSV; Week 2 also includes `medications`. Patient IDs are `P00000001`, encounter IDs
 `E000000001`, and lab IDs `L0000000001`; timestamps use UTC. Raw data includes
 configurable exact duplicates, department aliases, and invalid discharge times.
 `_manifest.json` records configuration, row counts, and injected defect counts.
@@ -122,7 +122,10 @@ row counts, using clean data from the same engine. Counts for encounters and lab
 now vary with patient journeys; the former one-row-per-patient assumption and
 `patient-...` IDs must be replaced with manifest counts and actual stable IDs.
 Direct script invocation supports the same flags; add `--format csv` for CSV.
-The remaining entities and the live batch integration remain pending.
+`medications_per_encounter` configures order counts. Medication IDs use
+`M<encounter-number>-<order-number>`; orders reference valid patients/encounters
+and their times stay inside the clean encounter. Vitals, bed events and live
+batch integration remain pending.
 
 ### Run local MinIO (TV2, Week 1 — task 1)
 
@@ -244,15 +247,15 @@ row counts and a SHA-256 checksum of sorted stable IDs. The queries live in
 Missing, replaced, or duplicated IDs and query failures return a nonzero exit
 code. Each entity reports its own PASS or FAIL.
 
-The current generator writes patients, encounters, and lab results as Parquet or CSV. Until the
+The current generator writes patients, encounters, labs and medications as Parquet or CSV. Until the
 other entity sources exist, run:
 
 ```bash
-make verify-bronze BATCH_ID=<id> ENTITIES="patients encounters lab_results"
+make verify-bronze BATCH_ID=<id> ENTITIES="patients encounters lab_results medications"
 ```
 
 For a host Trino CLI, run `python -m scripts.verify_bronze --batch-id <id>
---entities patients encounters lab_results` and optionally supply `--server`.
+--entities patients encounters lab_results medications` and optionally supply `--server`.
 Parquet input requires `pyarrow`. The checksum covers IDs; it does not validate
 non-key values. A live run requires completed Bronze ingestion with `_batch_id`.
 

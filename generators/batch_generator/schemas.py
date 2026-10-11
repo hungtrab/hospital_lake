@@ -66,6 +66,13 @@ LAB_TESTS: tuple[LabTest, ...] = (
     LabTest("LACT", "Lactate", "mmol/L", 0.5, 2.2, 1.3, 0.6),
 )
 
+# Synthetic order catalog, independent of diagnosis or patient treatment rules.
+MEDICATION_CATALOG = (
+    ("Paracetamol", 500.0, "mg", "oral"),
+    ("Amoxicillin", 500.0, "mg", "oral"),
+    ("Saline", 250.0, "mL", "intravenous"),
+)
+
 # --- Arrow schemas -----------------------------------------------------------
 
 PATIENT_SCHEMA = pa.schema(
@@ -106,9 +113,24 @@ LAB_RESULT_SCHEMA = pa.schema(
     ]
 )
 
+MEDICATION_SCHEMA = pa.schema(
+    [
+        pa.field("medication_id", pa.string(), nullable=False),
+        pa.field("patient_id", pa.string(), nullable=False),
+        pa.field("encounter_id", pa.string(), nullable=False),
+        pa.field("drug_name", pa.string()),
+        pa.field("dose", pa.float64()),
+        pa.field("dose_unit", pa.string()),
+        pa.field("route", pa.string()),
+        pa.field("start_time", TS),
+        pa.field("end_time", TS),
+    ]
+)
+
 # Output file stem -> schema. Stems match the Bronze table names without "_raw".
 ENTITY_SCHEMAS: dict[str, pa.Schema] = {
     "patients": PATIENT_SCHEMA,
     "encounters": ENCOUNTER_SCHEMA,
     "lab_results": LAB_RESULT_SCHEMA,
+    "medications": MEDICATION_SCHEMA,
 }

@@ -1,6 +1,6 @@
 """Synthetic hospital batch data generator.
 
-Produces Parquet files for patients, encounters and lab_results with valid
+Produces Parquet/CSV files for patients, encounters, labs and medications with valid
 patient -> encounter -> lab_result foreign keys and a deterministic seed.
 A small, configurable fraction of raw-data defects (duplicates, department
 aliases, invalid discharge times) is injected afterwards so the Silver layer
@@ -40,6 +40,8 @@ from generators.batch_generator.schemas import (
     GENDERS,
     LAB_RESULT_SCHEMA,
     LAB_TESTS,
+    MEDICATION_CATALOG,
+    MEDICATION_SCHEMA,
     PATIENT_SCHEMA,
 )
 
@@ -71,6 +73,8 @@ class GeneratorConfig:
     duplicate_rate: float
     department_alias_rate: float
     invalid_discharge_rate: float
+    medications_min: int = 1
+    medications_max: int = 3
 
     def __post_init__(self) -> None:
         if isinstance(self.patients, bool) or not isinstance(self.patients, int) or self.patients <= 0:
@@ -79,6 +83,8 @@ class GeneratorConfig:
             raise ValueError("end_date must be after start_date")
         if not 1 <= self.encounters_min <= self.encounters_max:
             raise ValueError("require 1 <= encounters_per_patient.min <= max")
+        if not 0 <= self.medications_min <= self.medications_max:
+            raise ValueError("require 0 <= medications_per_encounter.min <= max")
         unknown = set(self.departments) - set(DEPARTMENTS)
         if unknown:
             raise ValueError(f"unknown departments {sorted(unknown)}; allowed: {DEPARTMENTS}")
@@ -98,6 +104,7 @@ class GeneratorConfig:
         raw.update({k: v for k, v in overrides.items() if v is not None})
         epp = raw.get("encounters_per_patient", {})
         dq = raw.get("data_quality", {})
+        medications = raw.get("medications_per_encounter", {})
         return cls(
             seed=int(raw["seed"]),
             patients=int(raw["patients"]),
@@ -109,6 +116,8 @@ class GeneratorConfig:
             duplicate_rate=float(dq.get("duplicate_rate", 0.0)),
             department_alias_rate=float(dq.get("department_alias_rate", 0.0)),
             invalid_discharge_rate=float(dq.get("invalid_discharge_rate", 0.0)),
+            medications_min=int(medications.get("min", 1)),
+            medications_max=int(medications.get("max", 3)),
         )
 
 
@@ -217,7 +226,33 @@ def generate_clean(cfg: GeneratorConfig) -> dict[str, dict[str, list[Any]]]:
                 break
             available_from = discharge + timedelta(hours=1)
 
-    return {"patients": patients, "encounters": encounters, "lab_results": labs}
+    return {"patients": patients, "encounters": encounters, "lab_results": labs,
+            "medications": generate_medications(cfg, encounters)}
+
+
+def _encounter_rows(encounters: dict[str, list[Any]]):
+    for values in zip(*encounters.values()):
+        yield dict(zip(encounters, values))
+
+
+def generate_medications(cfg: GeneratorConfig, encounters: dict[str, list[Any]]) -> dict[str, list[Any]]:
+    """Generate orders inside clean encounters before injecting source defects."""
+    medications = _empty_columns(MEDICATION_SCHEMA)
+    for encounter in _encounter_rows(encounters):
+        encounter_id = encounter["encounter_id"]
+        rng = random.Random(cfg.seed + 10_000 + int(encounter_id[1:]))
+        end = encounter["discharge_time"] or cfg.end_date
+        for index in range(1, rng.randint(cfg.medications_min, cfg.medications_max) + 1):
+            name, dose, unit, route = rng.choice(MEDICATION_CATALOG)
+            start = _uniform_time(rng, encounter["admission_time"], end)
+            order_end = _uniform_time(rng, start, end)
+            if encounter["discharge_time"] is None and rng.random() < 0.5:
+                order_end = None
+            _append(medications, medication_id=f"M{encounter_id[1:]}-{index:02d}",
+                    patient_id=encounter["patient_id"], encounter_id=encounter_id,
+                    drug_name=name, dose=dose, dose_unit=unit, route=route,
+                    start_time=start, end_time=order_end)
+    return medications
 
 
 def inject_defects(
