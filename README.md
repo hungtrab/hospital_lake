@@ -244,6 +244,39 @@ For a host Trino CLI, run `python -m scripts.verify_bronze --batch-id <id>
 Parquet input requires `pyarrow`. The checksum covers IDs; it does not validate
 non-key values. A live run requires completed Bronze ingestion with `_batch_id`.
 
+### TV4 Week 3: historical Gold metrics
+
+`spark/batch/silver_to_gold.py` computes hourly hospital census and ICU occupancy,
+daily department demand/utilization, and daily lab abnormal rates from
+`iceberg.silver.encounters`, `lab_results`, and `bed_events`. It creates and fully
+replaces four Iceberg Gold tables using `sql/iceberg/create_gold_tables.sql`.
+Five example Trino queries are in `sql/trino/queries.sql`.
+
+Install Spark 3.5 / PySpark 3.5, use Java 17, and make the Iceberg REST catalog,
+MinIO bucket, and Silver tables available. Export the settings in `.env.example`,
+using host-reachable endpoints when running Spark on the host. For example:
+
+```bash
+export MINIO_ENDPOINT=http://localhost:9000 ICEBERG_CATALOG_URI=http://localhost:8181
+export MINIO_ACCESS_KEY=... MINIO_SECRET_KEY=... ICEBERG_WAREHOUSE=s3://warehouse/
+export GOLD_AS_OF=2026-10-02T04:00:00Z GOLD_BED_CAPACITIES=ICU=20,CARDIOLOGY=50
+make gold
+python -m unittest discover -s tests/unit -p 'test_gold_metrics.py' -v
+```
+
+`GOLD_AS_OF` is an explicit UTC cutoff for reproducible open-encounter counts.
+Capacity must include ICU and every department in Silver. Census and ICU beds
+are measured after events in each UTC hour (the final hour is partial at the
+cutoff). Transfer count uses `bed_events.event_type = transferred`; ICU status
+uses the encounter's department. Daily unique patients are counted per
+department among encounters active that day. Length of stay averages discharged
+encounters only. Utilization is occupied patient-hours divided by configured
+bed-hours. The job rejects missing/duplicate encounter IDs and missing capacity;
+it does not silently discard them. Its Iceberg overwrite makes a retry at the
+same cutoff replace previous output. A local Spark test checks exact sample
+values; live Spark → Iceberg → Trino remains dependent on upstream Silver tables
+and the REST catalog.
+
 ## 5. Team
 
 Four equal members (TV1–TV4). Work allocation and weekly integration gates are defined in [`works.md`](./works.md).
