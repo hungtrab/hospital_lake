@@ -1,0 +1,26 @@
+# Synthetic batch dataset configuration.
+# CLI flags (--patients, --seed, --output-dir) override these values.
+
+seed: 42
+patients: 1000
+start_date: "2025-01-01"
+end_date: "2026-09-01"
+
+departments:
+  - EMERGENCY
+  - ICU
+  - CARDIOLOGY
+  - INTERNAL_MEDICINE
+  - SURGERY
+
+# Encounters per patient are drawn uniformly from this inclusive range.
+encounters_per_patient:
+  min: 1
+  max: 5
+
+# Intentional raw-data defects so Silver has real cleaning work to do.
+# Set all to 0.0 for a perfectly clean dataset.
+data_quality:
+  duplicate_rate: 0.01           # exact duplicate encounter / lab rows
+  department_alias_rate: 0.05    # "ER", "Cardio", ... instead of canonical name
+  invalid_discharge_rate: 0.002  # discharge_time earlier than admission_time

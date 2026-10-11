@@ -5,10 +5,11 @@ COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then printf 'docke
 .DEFAULT_GOAL := help
 
 help:
-	@printf '%s\n' 'make setup       Create .env without replacing an existing file' 'make config      Validate Compose configuration' 'make up          Start local services and wait for health checks' 'make down        Stop local services; preserve data volumes' 'make smoke-minio Verify MinIO readiness through its published port' 'make test        Run unit and verifier contract tests' 'make trino-config Validate Compose configuration' 'make trino-up    Start Trino and wait for readiness' 'make trino-stop  Stop Trino' 'make trino-smoke TABLE=iceberg.bronze.spark_smoke EXPECTED_ROWS=3' 'make verify-bronze BATCH_ID=<id> [ENTITIES="patients encounters ..."]' 'make gold        Submit Silver-to-Gold Spark batch job'
+	@printf '%s\n' 'make setup       Create .env and install Python dependencies' 'make generate-data PATIENTS=1000 SEED=42 [FORMAT=parquet|csv]'  'make config      Validate Compose configuration' 'make up          Start local services and wait for health checks' 'make down        Stop local services; preserve data volumes' 'make smoke-minio Verify MinIO readiness through its published port' 'make test        Run unit and verifier contract tests' 'make trino-config Validate Compose configuration' 'make trino-up    Start Trino and wait for readiness' 'make trino-stop  Stop Trino' 'make trino-smoke TABLE=iceberg.bronze.spark_smoke EXPECTED_ROWS=3' 'make verify-bronze BATCH_ID=<id> [ENTITIES="patients encounters ..."]' 'make gold        Submit Silver-to-Gold Spark batch job'
 
 setup:
 	@test -f .env || cp .env.example .env
+	$(PYTHON) -m pip install -r requirements.txt
 
 config:
 	$(COMPOSE) config --quiet
@@ -25,8 +26,7 @@ smoke-minio:
 	@printf '%s\n' 'PASS: MinIO readiness checks succeeded inside the container and through the published port.'
 
 test:
-	$(PYTHON) -m unittest discover -s tests/unit -v
-	$(PYTHON) -m unittest discover -s tests/integration -v
+	$(PYTHON) -m pytest tests/unit tests/integration -q
 
 trino-config:
 	$(COMPOSE) config --quiet
@@ -48,3 +48,12 @@ verify-bronze:
 
 gold:
 	$(PYTHON) -m scripts.run_gold
+
+PATIENTS ?= 1000
+SEED ?= 42
+OUTPUT_DIR ?= data/generated
+FORMAT ?= parquet
+
+.PHONY: generate-data
+generate-data:
+	$(PYTHON) -m generators.batch_generator.generate --patients $(PATIENTS) --seed $(SEED) --output-dir "$(OUTPUT_DIR)" --format $(FORMAT)

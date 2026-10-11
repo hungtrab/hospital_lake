@@ -101,16 +101,28 @@ See [`sitemap.md`](./sitemap.md) for what goes in each directory.
 
 ## 4. Status
 
-🚧 **Week 1 — initial batch generator.** A dependency-free Python generator produces synthetic patients, encounters, and lab results as CSV, using the fields in `plan.md`. It supports configurable scale and seed, valid foreign keys, and UTC timestamps. Parquet, the remaining entities, and the service pipeline are still planned (see [`works.md`](./works.md)).
-
-Run from the repository root with Python 3.10+:
+**TV1 Week 1 generator integrated with the local stack commands.** A shared
+Arrow schema and generator produce patients, encounters, and lab results in
+Parquet (default) or CSV. Patient IDs are `P00000001`, encounter IDs
+`E000000001`, and lab IDs `L0000000001`; timestamps use UTC. Raw data includes
+configurable exact duplicates, department aliases, and invalid discharge times.
+`_manifest.json` records configuration, row counts, and injected defect counts.
 
 ```bash
-python generators/batch_generator/generate.py --patients 1000 --seed 42
-python -m unittest discover -s tests/unit -v
+make setup
+make generate-data PATIENTS=1000 SEED=42
+make test
+# CSV compatibility output (use a separate directory from Parquet):
+make generate-data PATIENTS=1000 FORMAT=csv OUTPUT_DIR=data/generated/csv
 ```
 
-The generator writes `patients.csv`, `encounters.csv`, and `lab_results.csv` under `data/generated/` (one row per patient in each file). Use `--output-dir` to choose another directory. Rerunning replaces these three files; the same seed and patient count reproduce the same bytes. These initial clean fixtures are inputs for future batch ingestion; intentional bad-data cases and streaming are not implemented yet.
+`config.yaml` controls date range, departments, encounter counts and defect rates.
+The Python `generate(output_dir, patients, seed)` API still writes CSV and returns
+row counts, using clean data from the same engine. Counts for encounters and labs
+now vary with patient journeys; the former one-row-per-patient assumption and
+`patient-...` IDs must be replaced with manifest counts and actual stable IDs.
+Direct script invocation supports the same flags; add `--format csv` for CSV.
+The remaining entities and the live batch integration remain pending.
 
 ### Run local MinIO (TV2, Week 1 — task 1)
 
@@ -232,7 +244,7 @@ row counts and a SHA-256 checksum of sorted stable IDs. The queries live in
 Missing, replaced, or duplicated IDs and query failures return a nonzero exit
 code. Each entity reports its own PASS or FAIL.
 
-The current generator writes patients, encounters, and lab results. Until the
+The current generator writes patients, encounters, and lab results as Parquet or CSV. Until the
 other entity sources exist, run:
 
 ```bash

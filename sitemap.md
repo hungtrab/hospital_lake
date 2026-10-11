@@ -9,8 +9,15 @@
 
 ## 1. Current state
 
-The repository has an **initial Week 1 batch generator** in `generators/batch_generator/generate.py`, with tests in `tests/unit/test_batch_generator.py`.
-It writes deterministic CSV patients, encounters, and lab results. TV4's `scripts/trino_smoke.py` checks a known table's row count through the Trino CLI; `tests/unit/test_trino_smoke.py` tests its success/failure handling. Local MinIO and Trino deployment configurations exist; MinIO has a persistent volume and readiness check. MinIO runtime verification is pending after an image pull failure. Iceberg REST Catalog, bucket bootstrap, live integration, Parquet output and the full pipeline remain pending.
+TV1's Week 1 generator has shared Arrow schemas (`schemas.py`), YAML config,
+Parquet/CSV output, UTC timestamps, stable IDs and raw defects tracked in a manifest.
+`make generate-data` defaults to Parquet; `FORMAT=csv` uses the same engine.
+The CSV `generate(output_dir, patients, seed)` compatibility API emits clean data;
+encounter/lab counts now vary, so consumers must use manifest counts. Use separate
+directories for CSV and Parquet: the Bronze verifier requires exactly one source
+format per entity. Generator tests cover both formats and source-ID compatibility.
+Local MinIO/Trino configuration and TV4 smoke checks remain available; the live
+Spark → Iceberg → Trino gate still requires REST catalog and Spark connectivity.
 TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. SparkSession and connector setup remain pending.
 TV4's Week 3 `spark/batch/silver_to_gold.py` computes four Gold metrics from Silver; `scripts/run_gold.py` submits it with shared Spark configuration. Exact-value local Spark tests and five Trino query examples exist. Live Iceberg/Trino validation still needs the REST catalog and Silver tables.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
@@ -43,7 +50,8 @@ Root command/config files (Milestone 0, `plan.md` §22):
 
 | File | Purpose |
 |---|---|
-| `Makefile` | Includes `verify-bronze` and `gold` for TV4 batch validation and Gold submission, plus local and Trino targets. |
+| `requirements.txt`, `pyproject.toml` | Generator dependencies and pytest discovery for both pytest/unittest suites. |
+| `Makefile` | `setup` installs dependencies; `generate-data` writes configurable Parquet/CSV; `test` runs both styles with pytest. Includes `verify-bronze` and `gold` for TV4 batch validation and Gold submission, plus local and Trino targets. |
 | `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; synthetic-data local credentials shared by MinIO/Trino; `MINIO_IMAGE`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT` configure the local storage service. Endpoints use Compose service names. Makefile supports both Compose CLI forms via `COMPOSE`; the existing Python Trino smoke client requires `docker compose` in container mode. Never commit `.env`. |
 | `docker-compose.yml` | MinIO and Trino share the `hospital-lake` network; `minio-data` persists storage. Catalog and remaining services await their assigned tasks. |
 
@@ -76,8 +84,14 @@ Docs describe **what exists**, never planned-but-unbuilt features (`AGENTS.md` �
 
 | Path | Planned files | Responsibility | Wk |
 |---|---|---|---|
-| `batch_generator/` | `generate.py`, `config.yaml` | Synthetic patients, encounters, labs, medications, vitals, bed_events → Parquet. Deterministic seed, configurable scale (1k → 1M). | 1–2 |
+| `batch_generator/` | `generate.py`, `config.yaml`, `schemas.py` | Synthetic patients, encounters, labs, medications, vitals, bed_events → Parquet. Deterministic seed, configurable scale (1k → 1M). | 1–2 |
 | `stream_generator/` | `producer.py`, `event_models.py`, `config.yaml` | Kafka producer with common event envelope, `--rate`, key = `patient_id`; injects late / duplicate / invalid events. | 4, 7 |
+
+Batch source contract: `patients`, `encounters`, `lab_results` files use the
+fields in `plan.md` §5, with typed UTC timestamps in Parquet and ISO UTC strings
+in CSV; IDs are P/E/L-prefixed zero-padded strings. `_manifest.json` contains
+`config`, `format`, `row_counts`, `injected_defects`. Missing Week 2 entities remain
+planned. CSV API clean fixtures and CLI raw fixtures share the same schema.
 
 ### 3.4 `spark/` — Batch + Speed processing
 
