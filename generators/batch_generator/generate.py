@@ -1,6 +1,6 @@
 """Synthetic hospital batch data generator.
 
-Produces Parquet/CSV files for patients, encounters, labs and medications with valid
+Produces Parquet/CSV files for patients, encounters, labs, medications and vitals with valid
 patient -> encounter -> lab_result foreign keys and a deterministic seed.
 A small, configurable fraction of raw-data defects (duplicates, department
 aliases, invalid discharge times) is injected afterwards so the Silver layer
@@ -43,6 +43,7 @@ from generators.batch_generator.schemas import (
     MEDICATION_CATALOG,
     MEDICATION_SCHEMA,
     PATIENT_SCHEMA,
+    VITAL_SCHEMA,
 )
 
 log = logging.getLogger("batch_generator")
@@ -75,6 +76,8 @@ class GeneratorConfig:
     invalid_discharge_rate: float
     medications_min: int = 1
     medications_max: int = 3
+    vitals_min: int = 1
+    vitals_max: int = 5
 
     def __post_init__(self) -> None:
         if isinstance(self.patients, bool) or not isinstance(self.patients, int) or self.patients <= 0:
@@ -85,6 +88,8 @@ class GeneratorConfig:
             raise ValueError("require 1 <= encounters_per_patient.min <= max")
         if not 0 <= self.medications_min <= self.medications_max:
             raise ValueError("require 0 <= medications_per_encounter.min <= max")
+        if not 0 <= self.vitals_min <= self.vitals_max:
+            raise ValueError("require 0 <= vitals_per_encounter.min <= max")
         unknown = set(self.departments) - set(DEPARTMENTS)
         if unknown:
             raise ValueError(f"unknown departments {sorted(unknown)}; allowed: {DEPARTMENTS}")
@@ -105,6 +110,7 @@ class GeneratorConfig:
         epp = raw.get("encounters_per_patient", {})
         dq = raw.get("data_quality", {})
         medications = raw.get("medications_per_encounter", {})
+        vitals = raw.get("vitals_per_encounter", {})
         return cls(
             seed=int(raw["seed"]),
             patients=int(raw["patients"]),
@@ -118,6 +124,8 @@ class GeneratorConfig:
             invalid_discharge_rate=float(dq.get("invalid_discharge_rate", 0.0)),
             medications_min=int(medications.get("min", 1)),
             medications_max=int(medications.get("max", 3)),
+            vitals_min=int(vitals.get("min", 1)),
+            vitals_max=int(vitals.get("max", 5)),
         )
 
 
@@ -227,7 +235,8 @@ def generate_clean(cfg: GeneratorConfig) -> dict[str, dict[str, list[Any]]]:
             available_from = discharge + timedelta(hours=1)
 
     return {"patients": patients, "encounters": encounters, "lab_results": labs,
-            "medications": generate_medications(cfg, encounters)}
+            "medications": generate_medications(cfg, encounters),
+            "vitals": generate_vitals(cfg, encounters)}
 
 
 def _encounter_rows(encounters: dict[str, list[Any]]):
@@ -253,6 +262,24 @@ def generate_medications(cfg: GeneratorConfig, encounters: dict[str, list[Any]])
                     drug_name=name, dose=dose, dose_unit=unit, route=route,
                     start_time=start, end_time=order_end)
     return medications
+
+
+def generate_vitals(cfg: GeneratorConfig, encounters: dict[str, list[Any]]) -> dict[str, list[Any]]:
+    """Generate synthetic observations with canonical units and UTC times."""
+    vitals = _empty_columns(VITAL_SCHEMA)
+    for encounter in _encounter_rows(encounters):
+        encounter_id = encounter["encounter_id"]
+        rng = random.Random(cfg.seed + 20_000 + int(encounter_id[1:]))
+        end = encounter["discharge_time"] or cfg.end_date
+        times = sorted(_uniform_time(rng, encounter["admission_time"], end)
+                       for _ in range(rng.randint(cfg.vitals_min, cfg.vitals_max)))
+        for index, measured_at in enumerate(times, 1):
+            _append(vitals, measurement_id=f"V{encounter_id[1:]}-{index:02d}",
+                    patient_id=encounter["patient_id"], encounter_id=encounter_id,
+                    heart_rate=rng.randint(55, 130), spo2=round(rng.uniform(90, 100), 1),
+                    systolic_bp=rng.randint(100, 160), diastolic_bp=rng.randint(55, 95),
+                    temperature=round(rng.uniform(36, 39), 1), measured_at=measured_at)
+    return vitals
 
 
 def inject_defects(

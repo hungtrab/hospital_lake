@@ -92,7 +92,9 @@ fields in `plan.md` §5, with typed UTC timestamps in Parquet and ISO UTC string
 in CSV; IDs are P/E/L-prefixed zero-padded strings. `_manifest.json` contains
 `config`, `format`, `row_counts`, `injected_defects`. Week 2 `medications` is implemented with fields from `plan.md` §5 and
 `M<encounter-number>-<order-number>` IDs; count is configured by
-`medications_per_encounter`. Vitals and bed events remain planned. CSV API clean fixtures and CLI raw fixtures share the same schema.
+`medications_per_encounter`. `vitals` uses `V<encounter-number>-<sample-number>`
+IDs and `vitals_per_encounter` counts, with canonical bpm/percent/mmHg/Celsius
+units and observations inside clean encounters. Bed events remain planned. CSV API clean fixtures and CLI raw fixtures share the same schema.
 
 ### 3.4 `spark/` — Batch + Speed processing
 
