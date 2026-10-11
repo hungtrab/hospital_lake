@@ -134,6 +134,23 @@ synthetic and scoped to the encounter, preventing double booking; they do not
 represent a finite hospital inventory. `bed_transfer_rate` controls transfers.
 Live batch integration remains pending.
 
+### TV1 Week 2: validate the complete generated dataset
+
+```bash
+make generate-data PATIENTS=10000
+make verify-generated INPUT_DIR=data/generated
+make validate-generator SCALES="10000 100000"
+```
+
+`verify-generated` checks actual Parquet schema, counts, non-null primary keys,
+patient/encounter foreign keys, and duplicate counts against the manifest for
+all six entities. `validate-generator` runs each scale twice in a temporary
+directory, validates both outputs and compares every file's SHA-256 plus the
+manifest. It writes a JSON report to `results/generator-validation.json`;
+`GENERATOR_REPORT` changes that path. Invalid data/contracts return a nonzero
+exit code. This validates generated sources; the live Parquet → Bronze → Trino
+gate still needs upstream infrastructure and ingestion implementation.
+
 ### Run local MinIO (TV2, Week 1 — task 1)
 
 Requires Docker Engine, Docker Compose v2+ (either `docker compose` or `docker-compose`), Make and curl.

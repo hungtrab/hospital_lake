@@ -51,7 +51,7 @@ Root command/config files (Milestone 0, `plan.md` §22):
 | File | Purpose |
 |---|---|
 | `requirements.txt`, `pyproject.toml` | Generator dependencies and pytest discovery for both pytest/unittest suites. |
-| `Makefile` | `setup` installs dependencies; `generate-data` writes configurable Parquet/CSV; `test` runs both styles with pytest. Includes `verify-bronze` and `gold` for TV4 batch validation and Gold submission, plus local and Trino targets. |
+| `Makefile` | `setup` installs dependencies; `generate-data` writes configurable Parquet/CSV; `test` runs both styles with pytest. `verify-generated` checks Parquet source contracts; `validate-generator` repeats 10k/100k generation and records deterministic hashes. Includes `verify-bronze` and `gold` for TV4 batch validation and Gold submission, plus local and Trino targets. |
 | `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; synthetic-data local credentials shared by MinIO/Trino; `MINIO_IMAGE`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT` configure the local storage service. Endpoints use Compose service names. Makefile supports both Compose CLI forms via `COMPOSE`; the existing Python Trino smoke client requires `docker compose` in container mode. Never commit `.env`. |
 | `docker-compose.yml` | MinIO and Trino share the `hospital-lake` network; `minio-data` persists storage. Catalog and remaining services await their assigned tasks. |
 
@@ -66,7 +66,7 @@ Legend — **Layer**: Lambda layer the code belongs to (Batch / Speed / Serving 
 | Planned file | Content | Wk |
 |---|---|---|
 | `architecture.md` | Diagram, component responsibilities, batch path, stream path, Lambda mapping | 1+ |
-| `data-model.md` | Entities, keys, relationships, Bronze/Silver/Gold tables | 1–3 |
+| `data-model.md` | Implemented six-entity source contracts, migration, raw defect semantics and local 10k/100k measurements; Bronze/Silver/Gold integration remains pending | 1–3 |
 | `demo-script.md` | Exact demo commands (`plan.md` §28) | 9 |
 | `benchmark.md` | Raw measurements + interpretation | 8 |
 
@@ -99,7 +99,8 @@ IDs and assigned/transferred/released journeys for non-outpatient encounters.
 Transfers name the new bed and close the prior assignment in the same department;
 open encounters have no release. Bed IDs are synthetic per encounter, not a fixed
 inventory. `bed_transfer_rate` controls transfers. All six source entities exist;
-10k/100k scale validation and live Bronze ingestion remain pending. CSV API clean fixtures and CLI raw fixtures share the same schema.
+Scale validation is reproducible with `make validate-generator`; live Bronze
+ingestion remains pending. CSV API clean fixtures and CLI raw fixtures share the same schema.
 
 ### 3.4 `spark/` — Batch + Speed processing
 
@@ -156,6 +157,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | `verify_bronze.py` | TV4: compare CSV/Parquet source count and stable-ID checksum with one Bronze `_batch_id` through Trino; `make verify-bronze` | 2 |
 | `run_gold.py` | TV4: submit Gold Spark job using shared Iceberg/MinIO settings; `make gold` | 3 |
 | `reset.sh` | Dev reset (not a substitute for idempotency) | 1+ |
+| `check_generator.py` | TV1 Week 2: actual six-entity schema/FK/count validation and same-seed scale reruns; `verify-generated`, `validate-generator`; JSON report in ignored `results/` | 2 |
 | `seed.sh` | Generate + load demo dataset | 2 |
 | `demo.sh` | Scripted final demo | 9 |
 | `benchmark.sh` | Batch + streaming benchmarks → CSV/JSON | 8 |
