@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS iceberg.gold.lab_daily_metrics (
 ) USING iceberg;
 
 CREATE TABLE IF NOT EXISTS iceberg.gold.icu_occupancy (
-    timestamp TIMESTAMP,
+    `timestamp` TIMESTAMP,
     occupied_beds BIGINT,
     total_beds BIGINT,
     available_beds BIGINT,

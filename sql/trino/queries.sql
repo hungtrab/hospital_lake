@@ -11,9 +11,9 @@ FROM iceberg.gold.department_daily_metrics
 ORDER BY date DESC, department LIMIT 100;
 
 -- 3. ICU capacity trend.
-SELECT timestamp, occupied_beds, total_beds, available_beds, occupancy_rate
+SELECT "timestamp", occupied_beds, total_beds, available_beds, occupancy_rate
 FROM iceberg.gold.icu_occupancy
-ORDER BY timestamp DESC LIMIT 24;
+ORDER BY "timestamp" DESC LIMIT 24;
 
 -- 4. Abnormal laboratory results by test and day.
 SELECT date, test_name, total_tests, abnormal_tests, abnormal_rate
