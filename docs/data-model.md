@@ -98,4 +98,60 @@ Spark throughput or the Week 8 benchmark milestone. A reproducible timing comman
 ```
 
 The live Week 2 gate (Parquet → Spark Bronze → Trino verification) remains
-pending upstream REST catalog, Bronze DDL and ingestion implementation.
+pending ingestion implementation. The local REST catalog and Bronze DDL are now available.
+
+
+## Week 2 Bronze Iceberg contracts (TV2)
+
+`sql/iceberg/create_bronze_tables.sql` defines the six typed raw tables with the
+same source columns as the Arrow contracts above. Domain columns are nullable,
+including IDs, so representable bad rows can be preserved for Silver validation.
+No primary-key uniqueness or foreign-key business validation runs in Bronze.
+The same timestamp values are stored as Iceberg `timestamptz` (Spark
+`TIMESTAMP_LTZ`, UTC session); already-typed Parquet retains microsecond precision.
+Malformed lexical CSV values cannot be preserved in a typed timestamp column:
+TV3 ingestion must retain the original rejected record/reason in quarantine.
+
+| Table | Hidden partition | Reason |
+|---|---|---|
+| `patients_raw` | None | Dimension-like raw input; avoids sparse partitions on registration dates |
+| `encounters_raw` | `days(admission_time)` | Batch date scans without splitting on unnormalized department aliases |
+| `lab_results_raw` | `days(measured_at)` | Historical date scans |
+| `medications_raw` | `days(start_time)` | Historical date scans |
+| `vitals_raw` | `days(measured_at)` | Bronze replay is batch-oriented; daily granularity limits fragmentation compared with hourly partitions |
+| `bed_events_raw` | `days(event_time)` | Event-date replay |
+
+These are starting access-pattern choices, not measured performance improvements.
+The plan's hourly vital suggestion is more appropriate if measured sub-day access
+later justifies it. No table partitions by patient/event ID. `bronze-smoke`
+reports actual file/partition counts and average bytes on its small fixtures;
+the files are expected to be small at this scale. Later benchmarks/maintenance
+must evaluate real demo-scale behavior before claiming an improvement.
+All tables use Iceberg format v2, Parquet files and a 128 MiB target file size;
+the target does not guarantee that a small input creates large files.
+
+### Ingestion handoff
+
+TV3 supplies the five extra fields when appending source records:
+
+| Metadata | Type / nullability | Meaning |
+|---|---|---|
+| `_source` | STRING, required | Traceable source identifier |
+| `_ingested_at` | TIMESTAMP_LTZ, required | UTC ingestion time, distinct from event time |
+| `_batch_id` | STRING, required | Stable batch/retry identity used by TV4 verification |
+| `_event_id` | STRING, optional | Stable event ID where available; preserve bed `event_id` separately |
+| `_schema_version` | INT, required | Source contract version, currently 1 |
+
+Run `make bootstrap-bronze` before ingestion. The common
+`spark/common/iceberg.py` extracts the previously used Week 1 SparkSession setup,
+so bootstrap and fixture jobs reuse the same REST/S3 configuration. Connector
+JARs are still provided by the Docker Spark submit command. `_batch_id` alone
+does not make appends idempotent: retry logic remains the ingestion job's task.
+Existing table drift fails visibly; apply a reviewed explicit schema/partition
+migration rather than dropping, replacing or silently altering a table.
+
+`make bronze-smoke PYTHON=.venv/bin/python` validates these contracts in an
+isolated namespace, including duplicates, invalid raw vital values, full Spark
+row equality, Trino ID checksums, MinIO metadata existence, safe bootstrap rerun
+and refusal of incompatible tables. It is a fixture check, not the production
+Week 2 batch gate. Canonical tables stay available for TV3/TV4 after the check.
