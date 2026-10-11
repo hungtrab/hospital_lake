@@ -175,7 +175,8 @@ def generate_clean(cfg: GeneratorConfig) -> dict[str, dict[str, list[Any]]]:
             patients,
             patient_id=patient_id,
             gender=rng.choices(GENDERS, weights=(0.49, 0.49, 0.02))[0],
-            birth_year=rng.randint(1930, 2024),
+            birth_year=rng.randint(min(1930, max(1, created_at.year - 95)),
+                                   min(2024, created_at.year)),
             city=rng.choice(CITIES),
             created_at=created_at,
         )

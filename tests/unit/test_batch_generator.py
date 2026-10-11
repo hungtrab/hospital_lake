@@ -134,6 +134,19 @@ def test_encounter_timeline_plausible(clean, clean_config):
         last_discharge[e["patient_id"]] = e["discharge_time"]
 
 
+@pytest.mark.parametrize("year", [1900, 2000])
+def test_historical_config_never_generates_birth_after_registration(clean_config, year):
+    from datetime import datetime, timezone
+
+    config = dataclasses.replace(clean_config, patients=50,
+                                 start_date=datetime(year, 1, 1, tzinfo=timezone.utc),
+                                 end_date=datetime(year + 1, 1, 1, tzinfo=timezone.utc))
+    tables, _ = generate(config)
+    for patient in tables["patients"].to_pylist():
+        assert patient["birth_year"] <= patient["created_at"].year
+        assert patient["birth_year"] >= patient["created_at"].year - 100
+
+
 def test_labs_measured_within_encounter(clean, clean_config):
     encounters = {e["encounter_id"]: e for e in clean["encounters"]}
     for lab in clean["lab_results"]:
