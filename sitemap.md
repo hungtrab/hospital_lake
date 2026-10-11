@@ -12,6 +12,7 @@
 The repository has an **initial Week 1 batch generator** in `generators/batch_generator/generate.py`, with tests in `tests/unit/test_batch_generator.py`.
 It writes deterministic CSV patients, encounters, and lab results. TV4's `scripts/trino_smoke.py` checks a known table's row count through the Trino CLI; `tests/unit/test_trino_smoke.py` tests its success/failure handling. Local MinIO and Trino deployment configurations exist; MinIO has a persistent volume and readiness check. MinIO runtime verification is pending after an image pull failure. Iceberg REST Catalog, bucket bootstrap, live integration, Parquet output and the full pipeline remain pending.
 TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. SparkSession and connector setup remain pending.
+TV4's Week 3 `spark/batch/silver_to_gold.py` computes four Gold metrics from Silver; `scripts/run_gold.py` submits it with shared Spark configuration. Exact-value local Spark tests and five Trino query examples exist. Live Iceberg/Trino validation still needs the REST catalog and Silver tables.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
 ---
@@ -42,7 +43,7 @@ Root command/config files (Milestone 0, `plan.md` §22):
 
 | File | Purpose |
 |---|---|
-| `Makefile` | Includes `verify-bronze` for TV4 batch validation, plus existing local and Trino targets. |
+| `Makefile` | Includes `verify-bronze` and `gold` for TV4 batch validation and Gold submission, plus local and Trino targets. |
 | `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; synthetic-data local credentials shared by MinIO/Trino; `MINIO_IMAGE`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT` configure the local storage service. Endpoints use Compose service names. Makefile supports both Compose CLI forms via `COMPOSE`; the existing Python Trino smoke client requires `docker compose` in container mode. Never commit `.env`. |
 | `docker-compose.yml` | MinIO and Trino share the `hospital-lake` network; `minio-data` persists storage. Catalog and remaining services await their assigned tasks. |
 
@@ -83,15 +84,15 @@ Docs describe **what exists**, never planned-but-unbuilt features (`AGENTS.md` �
 | Path | Planned files | Responsibility | TV | Wk |
 |---|---|---|---|---|
 | `common/` | `config.py`, `schemas.py`, `iceberg.py` | Env-based config, SparkSession + Iceberg/MinIO setup, shared schemas, data-quality/quarantine helpers. **Reuse, don't duplicate.** | TV3 | 1, 3 |
-| `batch/` | `ingest_bronze.py`, `bronze_to_silver.py`, `silver_to_gold.py`, `main.py` | raw Parquet → Bronze → Silver → Gold. Idempotent, logs input/output/invalid/duplicate rows + duration. | TV3 (Bronze), TV1/TV2 (Silver), TV4 (Gold) | 2–3 |
+| `batch/` | `ingest_bronze.py`, `bronze_to_silver.py`, `silver_to_gold.py`, `main.py` | raw Parquet → Bronze → Silver → Gold. TV4's `silver_to_gold.py` builds four historical Gold tables with a deterministic cutoff and full-table overwrite. | TV3 (Bronze), TV1/TV2 (Silver), TV4 (Gold) | 2–3 |
 | `streaming/` | `kafka_to_bronze.py`, `realtime_aggregates.py`, `main.py` | Kafka → validate → DLQ → dedup by `event_id` → watermark → Iceberg Bronze + realtime aggregates → ClickHouse. | TV3, TV4 (sink/DLQ), TV1/TV2 (aggregates) | 4–5 |
 
 ### 3.5 `sql/` — Lakehouse DDL + Serving queries
 
 | Path | Planned files | Responsibility | TV | Wk |
 |---|---|---|---|---|
-| `iceberg/` | `create_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | Iceberg DDL + partitioning (`plan.md` §20) | TV2 | 2–3 |
-| `trino/` | `verify_bronze.sql`, planned `queries.sql` | Source-controlled Bronze count/ID queries; historical analytics later (`plan.md` §12.1) | TV4 | 1–3 |
+| `iceberg/` | `create_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | Iceberg DDL; TV4's four Gold table definitions are implemented | TV2/TV4 | 2–3 |
+| `trino/` | `verify_bronze.sql`, `queries.sql` | Bronze ID checks and five historical Gold queries | TV4 | 1–3 |
 | `clickhouse/` | `schema.sql`, `views.sql` | Realtime serving tables: `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | TV3/TV4 | 5 |
 
 ### 3.6 `dashboard/grafana/` — Serving · TV4
@@ -120,7 +121,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 
 | Path | Content | Wk |
 |---|---|---|
-| `unit/` | Generators, schemas, normalization, validation, aggregation logic (pytest) | 1+ |
+| `unit/` | Generators, schemas, normalization, validation, aggregation logic (unittest); `test_gold_metrics.py` uses local Spark | 1+ |
 | `integration/` | Bronze verifier contract checks; live Spark → Iceberg, Trino → Iceberg, Kafka → Spark, Spark → ClickHouse when services are available | 1+ |
 | `e2e/` | Event → Kafka → Streaming → ClickHouse/Trino assertions; full regression suite | 5, 8 |
 
@@ -131,6 +132,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | `bootstrap.sh` | One-time local setup | 1 |
 | `trino_smoke.py` | TV4: row-count check; `--check-stack` probes engine/catalog/count/data, `--compose` uses container CLI. Uses `TRINO_HOST`/`TRINO_PORT` or `--server`; returns nonzero on failure. | 1 |
 | `verify_bronze.py` | TV4: compare CSV/Parquet source count and stable-ID checksum with one Bronze `_batch_id` through Trino; `make verify-bronze` | 2 |
+| `run_gold.py` | TV4: submit Gold Spark job using shared Iceberg/MinIO settings; `make gold` | 3 |
 | `reset.sh` | Dev reset (not a substitute for idempotency) | 1+ |
 | `seed.sh` | Generate + load demo dataset | 2 |
 | `demo.sh` | Scripted final demo | 9 |
@@ -151,7 +153,7 @@ Scale/failure-injection scripts (Week 7) also go here.
 | Kafka topics | `hospital.{patient,encounter,lab,medication,vitals,bed,dlq}` | `plan.md` §6 |
 | Event envelope | `event_id`, `event_type`, `event_time`, `source`, `version`, `payload` | `plan.md` §6 |
 | ClickHouse tables | `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | `plan.md` §12.2 |
-| Env vars | `MINIO_*`, `KAFKA_BOOTSTRAP_SERVERS`, `CLICKHOUSE_*`, `TRINO_*`, `ICEBERG_CATALOG_URI`, `ICEBERG_WAREHOUSE`, `SPARK_MASTER` | `plan.md` §26 → `.env.example`; Spark loader in `spark/common/config.py` |
+| Env vars | `MINIO_*`, `KAFKA_BOOTSTRAP_SERVERS`, `CLICKHOUSE_*`, `TRINO_*`, `ICEBERG_CATALOG_URI`, `ICEBERG_WAREHOUSE`, `SPARK_MASTER`, `GOLD_AS_OF`, `GOLD_BED_CAPACITIES` | `plan.md` §26 → `.env.example`; Spark loader in `spark/common/config.py`; Gold job in `spark/batch/silver_to_gold.py` |
 | K8s namespace | `hospital-lake` | `plan.md` §14 |
 
 ---
