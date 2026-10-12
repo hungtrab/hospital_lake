@@ -149,6 +149,40 @@ class BronzeIngestionTests(unittest.TestCase):
             expected_ids = source_ids(self.root, entity, id_column)
             self.assertEqual(checksum(expected_ids), checksum(row[0] for row in actual.select(id_column).collect()))
 
+    def test_retry_rejects_changed_values_or_duplicate_counts_without_writing(self):
+        originals = self.fixture(("patients",))
+        original = originals["patients"]
+        ingest_bronze(self.spark, self.root, "immutable-001", ("patients",))
+        before = row_values(self.spark.table("iceberg.bronze.patients_raw").drop("_ingested_at"))
+        from pyspark.sql import functions as F
+
+        changed_inputs = (
+            original.withColumn("city", F.lit("changed-city")),  # Same IDs and row count.
+            original.unionByName(original.limit(1)),  # Added duplicate.
+            original.limit(2),  # Removed raw row.
+            self.spark.createDataFrame([], original.schema),
+        )
+        for changed in changed_inputs:
+            changed.write.mode("overwrite").parquet(str(self.root / "patients.parquet"))
+            with self.assertRaisesRegex(ValueError, "different raw rows"):
+                ingest_bronze(self.spark, self.root, "immutable-001", ("patients",))
+            after = row_values(self.spark.table("iceberg.bronze.patients_raw").drop("_ingested_at"))
+            self.assertEqual(after, before)
+        original.orderBy(F.col("patient_id").desc_nulls_first()).write.mode("overwrite").parquet(
+            str(self.root / "patients.parquet"))
+        retry = ingest_bronze(self.spark.newSession(), self.root, "immutable-001", ("patients",))
+        self.assertEqual(retry[0]["status"], "skipped")
+
+    def test_empty_source_is_a_safe_repeatable_noop(self):
+        original = self.fixture(("patients",))["patients"]
+        self.spark.createDataFrame([], original.schema).write.mode("overwrite").parquet(
+            str(self.root / "patients.parquet"))
+        for _ in range(2):
+            report = ingest_bronze(self.spark, self.root, "empty-001", ("patients",))[0]
+            self.assertEqual((report["status"], report["input_rows"], report["output_rows"]),
+                             ("empty", 0, 0))
+        self.assertEqual(self.spark.table("iceberg.bronze.patients_raw").count(), 0)
+
     def test_preflight_missing_input_or_schema_drift_does_not_write(self):
         self.fixture(("patients",))
         with self.assertRaisesRegex(ValueError, "encounters"):

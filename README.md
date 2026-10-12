@@ -436,7 +436,12 @@ entities before any table is written. Unreadable Parquet fails the job visibly;
 domain validation/quarantine belongs to the upcoming Silver work.
 
 Each table is appended in one Iceberg commit. A retry with the same `BATCH_ID`
-skips tables containing that ID, so it also resumes after a later table fails.
+compares the raw rows with the committed batch and skips identical tables, so it
+also resumes after a later table fails. Comparison preserves duplicate counts
+and ignores row order and ingestion metadata. Changed values, added/removed rows,
+or duplicate counts fail visibly; use a new ID for changed inputs. This exact
+retry check scans and compares both datasets; it is a correctness check rather
+than a constant-time lookup.
 Use one writer at a time per target table and keep inputs immutable for a given
 batch ID; concurrent same-ID submissions are not protected by a distributed lock.
 Do not reuse an ID to load changed data or delete rows from a committed Bronze

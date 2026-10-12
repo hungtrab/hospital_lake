@@ -75,7 +75,17 @@ def ingest_bronze(spark, input_dir: Path, batch_id: str, entities=ENTITIES) -> l
         incoming = raw.withColumn("_source", F.input_file_name()).persist(StorageLevel.MEMORY_AND_DISK)
         try:
             input_rows = incoming.count()
-            committed = spark.table(table).where(F.col("_batch_id") == F.lit(batch_id)).limit(1).count()
+            previous = spark.table(table).where(F.col("_batch_id") == F.lit(batch_id))
+            committed = previous.limit(1).count()
+            if committed:
+                # Compare multisets, not IDs/counts: changed values or duplicate
+                # multiplicities must never be silently accepted under an old ID.
+                previous_raw = previous.select(*raw.columns)
+                incoming_raw = incoming.select(*raw.columns)
+                if (previous_raw.exceptAll(incoming_raw).limit(1).count()
+                        or incoming_raw.exceptAll(previous_raw).limit(1).count()):
+                    raise ValueError(f"{table}: batch {batch_id!r} already exists with different raw rows; "
+                                     "use a new batch ID for changed inputs")
             output_rows = 0
             status = "skipped" if committed else "empty"
             if not committed and input_rows:
