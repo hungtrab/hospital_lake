@@ -449,6 +449,11 @@ batch. A new ID appends a new raw batch, preserving source duplicates. Empty
 inputs produce zero rows. JSON logs report table, batch ID, written/skipped/empty
 status, input/output rows and duration; invalid/duplicate counts are null because
 this raw stage does not evaluate domain quality.
+Failures also emit a JSON event with batch ID, table (when known), phase
+(`startup`, `preflight`, or `ingest`), exception type and elapsed time, then
+propagate the original exception so the command fails. The structured event
+omits exception messages and raw values; Python/Spark error diagnostics may
+still include the original exception.
 
 Once the live stack is available, TV4's existing row-count smoke command can query
 each table (substitute the actual source count):

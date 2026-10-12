@@ -121,8 +121,11 @@ class BronzeIngestionTests(unittest.TestCase):
             return original_append(writer)
 
         with patch.object(DataFrameWriterV2, "append", interrupt_second_write):
-            with self.assertRaisesRegex(RuntimeError, "injected write failure"):
+            with self.assertLogs("spark.batch.ingest_bronze", level="ERROR") as logs, self.assertRaisesRegex(RuntimeError, "injected write failure"):
                 ingest_bronze(self.spark, self.root, "recover-001", entities)
+        failure = json.loads(logs.records[-1].getMessage())
+        self.assertEqual((failure["table"], failure["phase"], failure["status"], failure["error_type"]),
+                         ("iceberg.bronze.encounters_raw", "ingest", "failed", "RuntimeError"))
         reports = ingest_bronze(self.spark, self.root, "recover-001", entities)
         self.assertEqual([report["status"] for report in reports], ["skipped", "written"])
         for entity in entities:
@@ -185,8 +188,11 @@ class BronzeIngestionTests(unittest.TestCase):
 
     def test_preflight_missing_input_or_schema_drift_does_not_write(self):
         self.fixture(("patients",))
-        with self.assertRaisesRegex(ValueError, "encounters"):
+        with self.assertLogs("spark.batch.ingest_bronze", level="ERROR") as logs, self.assertRaisesRegex(ValueError, "encounters"):
             ingest_bronze(self.spark, self.root, "missing-input", ("patients", "encounters"))
+        failure = json.loads(logs.records[-1].getMessage())
+        self.assertEqual((failure["table"], failure["phase"], failure["error_type"]),
+                         ("iceberg.bronze.encounters_raw", "preflight", "ValueError"))
         self.spark.sql("ALTER TABLE iceberg.bronze.patients_raw ADD COLUMN extra_field STRING")
         with self.assertRaisesRegex(ValueError, "schema mismatch"):
             ingest_bronze(self.spark, self.root, "drift", ("patients",))

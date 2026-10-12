@@ -22,6 +22,16 @@ METADATA_TYPES = {
 }
 
 
+def _log_failure(batch_id: str, phase: str, error: Exception, started: float, table=None) -> None:
+    # Exception messages can contain data or credentials; keep the JSON event
+    # diagnostic but value-free. The original exception still propagates.
+    LOGGER.error(json.dumps({
+        "job": "ingest_bronze", "batch_id": batch_id, "table": table,
+        "status": "failed", "phase": phase, "error_type": type(error).__name__,
+        "duration_seconds": round(monotonic() - started, 3),
+    }, sort_keys=True))
+
+
 def source_path(input_dir: Path, entity: str) -> Path:
     """Accept one .parquet file/Spark directory, or an entity partition directory."""
     candidates = [path for path in (input_dir / f"{entity}.parquet", input_dir / entity)
@@ -56,24 +66,30 @@ def ingest_bronze(spark, input_dir: Path, batch_id: str, entities=ENTITIES) -> l
     # Preflight every input and target before committing the first table.
     sources = []
     for entity in entities:
-        path = source_path(Path(input_dir), entity)
+        started = monotonic()
         table = f"iceberg.bronze.{entity}_raw"
-        if not spark.catalog.tableExists(table):
-            raise ValueError(f"Missing {table}; run TV2's Bronze table bootstrap first")
-        details = spark.sql(f"DESCRIBE TABLE EXTENDED {table}").collect()
-        provider = next((row.data_type for row in details if row.col_name == "Provider"), None)
-        if provider != "iceberg":
-            raise ValueError(f"{table} must be an Iceberg table")
-        raw = spark.read.option("mergeSchema", "true").parquet(str(path))
-        validate_schema(raw.schema, spark.table(table).schema, table)
-        sources.append((raw, table))
+        try:
+            path = source_path(Path(input_dir), entity)
+            if not spark.catalog.tableExists(table):
+                raise ValueError(f"Missing {table}; run TV2's Bronze table bootstrap first")
+            details = spark.sql(f"DESCRIBE TABLE EXTENDED {table}").collect()
+            provider = next((row.data_type for row in details if row.col_name == "Provider"), None)
+            if provider != "iceberg":
+                raise ValueError(f"{table} must be an Iceberg table")
+            raw = spark.read.option("mergeSchema", "true").parquet(str(path))
+            validate_schema(raw.schema, spark.table(table).schema, table)
+            sources.append((raw, table))
+        except Exception as error:
+            _log_failure(batch_id, "preflight", error, started, table)
+            raise
 
     reports = []
     for raw, table in sources:
         started = monotonic()
         # Capture filename before caching; ingestion metadata remains separate from raw fields.
-        incoming = raw.withColumn("_source", F.input_file_name()).persist(StorageLevel.MEMORY_AND_DISK)
+        incoming = None
         try:
+            incoming = raw.withColumn("_source", F.input_file_name()).persist(StorageLevel.MEMORY_AND_DISK)
             input_rows = incoming.count()
             previous = spark.table(table).where(F.col("_batch_id") == F.lit(batch_id))
             committed = previous.limit(1).count()
@@ -106,8 +122,12 @@ def ingest_bronze(spark, input_dir: Path, batch_id: str, entities=ENTITIES) -> l
             }
             LOGGER.info(json.dumps(report, sort_keys=True))
             reports.append(report)
+        except Exception as error:
+            _log_failure(batch_id, "ingest", error, started, table)
+            raise
         finally:
-            incoming.unpersist()
+            if incoming is not None:
+                incoming.unpersist()
     return reports
 
 
@@ -120,7 +140,12 @@ def main(argv=None) -> int:
     if not args.batch_id.strip():
         parser.error("--batch-id must be non-empty")
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    spark = create_spark_session("ingest_bronze", SparkConfig.from_env())
+    started = monotonic()
+    try:
+        spark = create_spark_session("ingest_bronze", SparkConfig.from_env())
+    except Exception as error:
+        _log_failure(args.batch_id, "startup", error, started)
+        raise
     try:
         ingest_bronze(spark, args.input_dir, args.batch_id, args.entities)
     finally:
