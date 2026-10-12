@@ -291,7 +291,7 @@ The shared defaults target the Compose network. For future host-side Spark jobs,
 set reachable `MINIO_ENDPOINT` and `ICEBERG_CATALOG_URI` addresses in `.env`.
 This module loads and validates configuration. The Week 1 Docker smoke job and
 Week 2 Bronze bootstrap reuse `spark/common/iceberg.py` to create SparkSession.
-TV3's production ingestion job remains pending.
+The production Parquet ingestion job is described below.
 
 ### TV2 Week 2: Bronze table contracts
 
@@ -383,6 +383,78 @@ it does not silently discard them. Its Iceberg overwrite makes a retry at the
 same cutoff replace previous output. A local Spark test checks exact sample
 values; live Spark → Iceberg → Trino remains dependent on upstream Silver tables
 and the REST catalog.
+
+### TV3 Week 2: Parquet → Bronze Iceberg
+
+Install the pinned Spark runtime in an isolated environment (Python 3.10+,
+Java 17+). The session loads the matching Iceberg 1.10.1 Spark 4.0 / Scala 2.13
+runtime and AWS bundle from Maven on first use. Existing Compose Spark 3.5 jobs
+keep their submitted Iceberg packages and the shared `create_spark_session(app_name, config)` API.
+Configuration follows the
+[Iceberg catalog configuration](https://iceberg.apache.org/docs/1.10.1/spark-configuration/)
+and [S3FileIO settings](https://iceberg.apache.org/docs/1.10.1/aws/).
+
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements-spark.txt
+TZ=UTC make test PYTHON=.venv/bin/python
+make test-bronze PYTHON=.venv/bin/python
+```
+
+`test-bronze` creates temporary raw Parquet and real Iceberg tables in a local
+Hadoop catalog. It checks all six entities, exact raw values including duplicates
+and null IDs, metadata, retry through a fresh SQL session, a new batch, recovery
+after an interrupted multi-table run, and visible failures for missing inputs,
+missing tables, schema drift, and corrupt Parquet. It does not exercise REST,
+MinIO, or Trino. It also verifies generated Parquet against the source-controlled
+Bronze DDL.
+
+For the actual REST/MinIO pipeline, generate immutable Parquet inputs with
+`make generate-data`, start the stack with `make up`, then run
+`make bootstrap-bronze` to create the existing source-controlled table contracts.
+Export the settings from `.env`
+as shown above; host-side jobs need reachable endpoints (for example,
+`http://localhost:9000` and `http://localhost:8181` if those ports are published).
+Then run:
+
+```bash
+make batch-bronze PYTHON=.venv/bin/python BATCH_ID=demo-001
+# Or ingest only an available subset while teammates finish their modules:
+make batch-bronze PYTHON=.venv/bin/python BATCH_ID=demo-001 ENTITIES="patients encounters lab_results"
+```
+
+`INPUT_DIR` defaults to `data/generated`. Each selected entity must have exactly
+one `<entity>.parquet` file/directory or `<entity>/` directory, using the canonical
+names `patients`, `encounters`, `lab_results`, `medications`, `vitals`, `bed_events`.
+The target is `iceberg.bronze.<entity>_raw`. Raw field names and types must match
+the target's domain fields exactly; source timestamps are preserved without
+normalization. The five added metadata columns are `_source STRING` (original
+file URI), `_ingested_at TIMESTAMP` (UTC), `_batch_id STRING`, `_event_id STRING`
+(source `event_id`, otherwise null), and `_schema_version INT` (1). Source columns
+must not use these reserved names. Inputs and schemas are checked for all selected
+entities before any table is written. Unreadable Parquet fails the job visibly;
+domain validation/quarantine belongs to the upcoming Silver work.
+
+Each table is appended in one Iceberg commit. A retry with the same `BATCH_ID`
+skips tables containing that ID, so it also resumes after a later table fails.
+Use one writer at a time per target table and keep inputs immutable for a given
+batch ID; concurrent same-ID submissions are not protected by a distributed lock.
+Do not reuse an ID to load changed data or delete rows from a committed Bronze
+batch. A new ID appends a new raw batch, preserving source duplicates. Empty
+inputs produce zero rows. JSON logs report table, batch ID, written/skipped/empty
+status, input/output rows and duration; invalid/duplicate counts are null because
+this raw stage does not evaluate domain quality.
+
+Once the live stack is available, TV4's existing row-count smoke command can query
+each table (substitute the actual source count):
+
+```bash
+make trino-smoke TABLE=iceberg.bronze.patients_raw EXPECTED_ROWS=1000
+```
+
+The full Week 2 gate is `make generate-data`, `make bootstrap-bronze`,
+`make batch-bronze BATCH_ID=demo-001`, then `make verify-bronze BATCH_ID=demo-001`.
+The local integration suite does not certify this live MinIO/REST/Trino gate.
 
 ## 5. Team
 

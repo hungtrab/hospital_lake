@@ -21,9 +21,9 @@ SQLite-backed Iceberg REST Catalog, Trino dependencies and a Docker Spark smoke
 profile. `week1-smoke` and `week1-recovery` check exact Spark/Trino rows and
 container recreation; the live Week 1 recovery gate passed locally on 2026-10-12.
 TV4 smoke checks remain available.
-TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. The Week 1 SparkSession setup is now shared in `spark/common/iceberg.py` and reused by fixtures/bootstrap; general batch ingestion remains pending.
+TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. The Week 1 SparkSession setup is now shared in `spark/common/iceberg.py` and reused by fixtures/bootstrap; batch ingestion is implemented in `spark/batch/ingest_bronze.py`, with metadata and serial batch-ID retries. Unit contracts, session compatibility checks (`tests/unit/test_iceberg_session.py`) and real local Spark/Iceberg integration tests cover preservation, retry and failure behavior.
 TV4's Week 3 `spark/batch/silver_to_gold.py` computes four Gold metrics from Silver; `scripts/run_gold.py` submits it with shared Spark configuration. Exact-value local Spark tests and five Trino query examples exist. Live Gold validation still needs Silver tables and their ingestion pipeline.
-TV2 Week 2 provides six Bronze DDL contracts, daily hidden partitions and an idempotent, drift-checking table bootstrap. `bronze-smoke` validates isolated Parquet fixtures, S3 metadata, Trino compatibility, raw preservation and reruns. Production Bronze ingestion remains TV3's pending task.
+TV2 Week 2 provides six Bronze DDL contracts, daily hidden partitions and an idempotent, drift-checking table bootstrap. `bronze-smoke` validates isolated Parquet fixtures, S3 metadata, Trino compatibility, raw preservation and reruns. Production Bronze ingestion is available through `make batch-bronze`; the live Week 2 integration gate still needs to be run.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
 ---
@@ -54,8 +54,9 @@ Root command/config files (Milestone 0, `plan.md` §22):
 
 | File | Purpose |
 |---|---|
+| `requirements-spark.txt` | Optional pinned PySpark 4.0.2 host runtime plus application dependencies; local Spark/Iceberg tests require Java 17+. |
 | `requirements.txt`, `pyproject.toml` | Generator dependencies and pytest discovery for both pytest/unittest suites. |
-| `Makefile` | Week 2: `bootstrap-bronze`, `bronze-smoke`. Week 1 commands: `minio-up`, `minio-stop`, `bootstrap-bucket`, `test-minio`, `week1-smoke`, `week1-recovery`. `setup` installs dependencies; `generate-data` writes configurable Parquet/CSV; `test` runs both styles with pytest. `verify-generated` checks Parquet source contracts; `validate-generator` repeats 10k/100k generation and records deterministic hashes. Includes `verify-bronze` and `gold` for TV4 batch validation and Gold submission, plus local and Trino targets. |
+| `Makefile` | Includes `batch-bronze` and `test-bronze` for ingestion/local integration. Week 2: `bootstrap-bronze`, `bronze-smoke`. Week 1 commands: `minio-up`, `minio-stop`, `bootstrap-bucket`, `test-minio`, `week1-smoke`, `week1-recovery`. `setup` installs dependencies; `generate-data` writes configurable Parquet/CSV; `test` runs both styles with pytest. `verify-generated` checks Parquet source contracts; `validate-generator` repeats 10k/100k generation and records deterministic hashes. Includes `verify-bronze` and `gold` for TV4 batch validation and Gold submission, plus local and Trino targets. |
 | `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; synthetic-data local credentials shared by MinIO/Trino; `MINIO_IMAGE`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`, `ICEBERG_REST_PORT` configure the local storage service. Endpoints use Compose service names. Makefile supports both Compose CLI forms via `COMPOSE`; Trino clients accept the `COMPOSE` override, which Make propagates. Never commit `.env`. |
 | `docker-compose.yml` | MinIO, `minio-init`, Iceberg REST, Trino and optional Spark/Bronze bootstrap/smoke profiles share `hospital-lake`; `minio-data` persists objects, `iceberg-catalog` persists SQLite metadata, `spark-ivy` caches fixture connectors. |
 
@@ -187,6 +188,7 @@ Scale/failure-injection scripts (Week 7) also go here.
 | Event envelope | `event_id`, `event_type`, `event_time`, `source`, `version`, `payload` | `plan.md` §6 |
 | ClickHouse tables | `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | `plan.md` §12.2 |
 | Env vars | `MINIO_*`, `KAFKA_BOOTSTRAP_SERVERS`, `CLICKHOUSE_*`, `TRINO_*`, `ICEBERG_CATALOG_URI`, `ICEBERG_WAREHOUSE`, `SPARK_MASTER`, `GOLD_AS_OF`, `GOLD_BED_CAPACITIES` | `plan.md` §26 → `.env.example`; Spark loader in `spark/common/config.py`; Gold job in `spark/batch/silver_to_gold.py` |
+| Bronze command | `make batch-bronze BATCH_ID=... [INPUT_DIR=data/generated] [ENTITIES="patients encounters ..."]`; immutable local Parquet, precreated matching Iceberg tables, one writer per table | `spark/batch/ingest_bronze.py`, `Makefile`, `README.md` |
 | K8s namespace | `hospital-lake` | `plan.md` §14 |
 
 ---

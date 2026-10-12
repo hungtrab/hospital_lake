@@ -1,0 +1,3 @@
+-r requirements.txt
+# Java 17+ is required. Iceberg JVM dependencies are configured in iceberg.py.
+pyspark==4.0.2
