@@ -54,7 +54,7 @@ Root command/config files (Milestone 0, `plan.md` §22):
 
 | File | Purpose |
 |---|---|
-| `requirements-spark.txt` | Optional pinned PySpark 4.0.2 host runtime plus application dependencies; local Spark/Iceberg tests require Java 17+. |
+| `requirements-spark.txt` | Optional pinned PySpark 4.0.2 host runtime plus application dependencies; local Spark/Iceberg tests require Java 17+. `batch-bronze-docker` uses the existing Compose Spark image instead. |
 | `requirements.txt`, `pyproject.toml` | Generator dependencies and pytest discovery for both pytest/unittest suites. |
 | `Makefile` | Includes `batch-bronze` and `test-bronze` for ingestion/local integration. Week 2: `bootstrap-bronze`, `bronze-smoke`. Week 1 commands: `minio-up`, `minio-stop`, `bootstrap-bucket`, `test-minio`, `week1-smoke`, `week1-recovery`. `setup` installs dependencies; `generate-data` writes configurable Parquet/CSV; `test` runs both styles with pytest. `verify-generated` checks Parquet source contracts; `validate-generator` repeats 10k/100k generation and records deterministic hashes. Includes `verify-bronze` and `gold` for TV4 batch validation and Gold submission, plus local and Trino targets. |
 | `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; synthetic-data local credentials shared by MinIO/Trino; `MINIO_IMAGE`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`, `ICEBERG_REST_PORT` configure the local storage service. Endpoints use Compose service names. Makefile supports both Compose CLI forms via `COMPOSE`; Trino clients accept the `COMPOSE` override, which Make propagates. Never commit `.env`. |
@@ -188,7 +188,7 @@ Scale/failure-injection scripts (Week 7) also go here.
 | Event envelope | `event_id`, `event_type`, `event_time`, `source`, `version`, `payload` | `plan.md` §6 |
 | ClickHouse tables | `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | `plan.md` §12.2 |
 | Env vars | `MINIO_*`, `KAFKA_BOOTSTRAP_SERVERS`, `CLICKHOUSE_*`, `TRINO_*`, `ICEBERG_CATALOG_URI`, `ICEBERG_WAREHOUSE`, `SPARK_MASTER`, `GOLD_AS_OF`, `GOLD_BED_CAPACITIES` | `plan.md` §26 → `.env.example`; Spark loader in `spark/common/config.py`; Gold job in `spark/batch/silver_to_gold.py` |
-| Bronze command | `make batch-bronze BATCH_ID=... [INPUT_DIR=data/generated] [ENTITIES="patients encounters ..."]`; immutable local Parquet, precreated matching Iceberg tables, one writer per table | `spark/batch/ingest_bronze.py`, `Makefile`, `README.md` |
+| Bronze command | `make batch-bronze BATCH_ID=... [INPUT_DIR=data/generated] [ENTITIES="patients encounters ..."]`; alternate `batch-bronze-docker` uses Compose `bronze-ingest` and read-only `BRONZE_INPUT_DIR` mount. Immutable local Parquet, precreated matching Iceberg tables, one writer per table. Submission tests: `tests/unit/test_bronze_submit.py`. | `spark/batch/ingest_bronze.py`, `docker-compose.yml`, `Makefile`, `README.md` |
 | K8s namespace | `hospital-lake` | `plan.md` §14 |
 
 ---

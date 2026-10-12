@@ -423,6 +423,24 @@ make batch-bronze PYTHON=.venv/bin/python BATCH_ID=demo-001
 make batch-bronze PYTHON=.venv/bin/python BATCH_ID=demo-001 ENTITIES="patients encounters lab_results"
 ```
 
+To use the existing Compose Spark 3.5 image instead of installing host Java/Spark,
+run after generating inputs and bootstrapping Bronze:
+
+```bash
+make batch-bronze-docker BATCH_ID=demo-001
+make verify-bronze BATCH_ID=demo-001
+# An external local directory is also supported:
+make batch-bronze-docker BATCH_ID=demo-002 INPUT_DIR="/path/to/parquet inputs"
+```
+
+This runs the same ingestion job using the shared service endpoints and
+credentials. `INPUT_DIR` becomes the read-only `/opt/hospital-input` mount through
+`BRONZE_INPUT_DIR`; an absent host directory fails rather than creating an empty
+one. The Spark job runs as the upstream image's non-root user, so mounted files
+must be readable by that user. The job requires Maven access on first use.
+This command is an alternate submission path; the full live gate still needs
+verification on a machine with Docker daemon access.
+
 `INPUT_DIR` defaults to `data/generated`. Each selected entity must have exactly
 one `<entity>.parquet` file/directory or `<entity>/` directory, using the canonical
 names `patients`, `encounters`, `lab_results`, `medications`, `vitals`, `bed_events`.
