@@ -511,9 +511,14 @@ python -m scripts.stream_bronze_probe --duration 300 --interval 10 \
 
 The probe checks that Bronze grows for five minutes, that Kafka coordinates do
 not repeat across raw/quarantine, and (optionally) that malformed events reach
-quarantine. It fails on query errors or stalled ingestion. Contract tests run
+quarantine. It fails on query errors or 60 seconds without a new row; adjust
+that limit with `--max-idle`. Contract tests run
 with `make test`; a live five-minute result remains pending until the upstream
 reader and services are available.
+
+An isolated Spark/Iceberg integration test exercises raw bytes, malformed-event
+quarantine, and retries without Kafka or Docker. Install `requirements-spark.txt`
+and run `make test-stream-bronze`; the first run needs Maven access for Iceberg.
 
 ## 5. Team
 

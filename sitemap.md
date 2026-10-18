@@ -153,7 +153,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Path | Content | Wk |
 |---|---|---|
 | `unit/` | Generators, schemas, normalization, validation, aggregation logic (unittest); `test_gold_metrics.py` uses local Spark | 1+ |
-| `integration/` | Bronze fixture, persistence and verifier checks; five-minute stream progress probe logic; live Spark → Iceberg, Trino → Iceberg, Kafka → Spark, Spark → ClickHouse when services are available | 1+ |
+| `integration/` | Bronze fixture, persistence and verifier checks; five-minute stream progress probe logic; opt-in local Spark/Iceberg stream sink test; live Kafka → Spark and Spark → ClickHouse when services are available | 1+ |
 | `e2e/` | Event → Kafka → Streaming → ClickHouse/Trino assertions; full regression suite | 5, 8 |
 
 ### 3.9 `scripts/` — Automation

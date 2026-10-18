@@ -58,6 +58,18 @@ class StreamBronzeProbeTests(unittest.TestCase):
                     monotonic=clock.monotonic, sleep=clock.sleep)
         self.assertEqual(clock.now, 300)
 
+    def test_growth_then_long_stall_fails_before_full_window(self):
+        clock = FakeTime()
+
+        def stats():
+            return (100 + int(clock.now >= 30), 0, 0)
+
+        with self.assertRaisesRegex(ValueError, "idle"):
+            monitor(stats, duration=300, interval=30, max_idle=60,
+                    min_events=1, require_quarantine=False,
+                    monotonic=clock.monotonic, sleep=clock.sleep)
+        self.assertEqual(clock.now, 90)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,7 +1,7 @@
 PYTHON ?= python3
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then printf 'docker compose'; else printf 'docker-compose'; fi)
 
-.PHONY: batch-bronze batch-bronze-docker test-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold stream-bronze-probe
+.PHONY: batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold stream-bronze-probe
 .DEFAULT_GOAL := help
 
 help:
@@ -80,6 +80,9 @@ gold:
 
 stream-bronze-probe:
 	$(PYTHON) -m scripts.stream_bronze_probe --compose --duration 300 --min-events 1
+
+test-stream-bronze:
+	RUN_STREAM_BRONZE_TESTS=1 $(PYTHON) -m unittest discover -s tests/integration -p test_stream_bronze_iceberg.py -v
 
 PATIENTS ?= 1000
 SEED ?= 42
