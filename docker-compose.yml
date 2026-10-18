@@ -2,11 +2,15 @@ name: hospital-lake
 
 services:
   minio:
-    image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-04-22T22-12-26Z}
+    image: ${MINIO_IMAGE:-hospital-lake/minio:RELEASE.2025-04-22T22-12-26Z}
+    build:
+      context: ./infra/docker/minio
+    pull_policy: build
     command: server /data --console-address ':9001'
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?Copy .env.example to .env first}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?Copy .env.example to .env first}
+      MINIO_REGION_NAME: ${MINIO_REGION:-us-east-1}
     ports:
       - '127.0.0.1:${MINIO_API_PORT:-9000}:9000'
       - '127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001'
@@ -21,6 +25,58 @@ services:
       timeout: 3s
       retries: 12
       start_period: 10s
+
+  minio-init:
+    image: ${MINIO_IMAGE:-hospital-lake/minio:RELEASE.2025-04-22T22-12-26Z}
+    pull_policy: never
+    entrypoint: ['/bin/sh', '/bootstrap.sh']
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Copy .env.example to .env first}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Copy .env.example to .env first}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      ICEBERG_WAREHOUSE: ${ICEBERG_WAREHOUSE:-s3://warehouse/}
+    volumes:
+      - ./infra/docker/minio/bootstrap.sh:/bootstrap.sh:ro
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - hospital-lake
+    restart: 'no'
+
+  iceberg-rest:
+    image: hospital-lake/iceberg-rest:1.9.0
+    build:
+      context: ./infra/docker/iceberg-rest
+    pull_policy: build
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ACCESS_KEY:?Copy .env.example to .env first}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:?Copy .env.example to .env first}
+      AWS_REGION: ${MINIO_REGION:-us-east-1}
+      CATALOG_WAREHOUSE: ${ICEBERG_WAREHOUSE:-s3://warehouse/}
+      CATALOG_URI: jdbc:sqlite:/var/lib/iceberg/catalog.db
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      CATALOG_S3_PATH__STYLE__ACCESS: 'true'
+      JAVA_TOOL_OPTIONS: -Xmx384m
+    ports:
+      - '127.0.0.1:${ICEBERG_REST_PORT:-8181}:8181'
+    volumes:
+      - iceberg-catalog:/var/lib/iceberg
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD', 'curl', '--fail', '--silent', 'http://localhost:8181/v1/config']
+      interval: 5s
+      timeout: 3s
+      retries: 18
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 640m
+    networks:
+      - hospital-lake
 
   trino:
     image: trinodb/trino:483
@@ -45,9 +101,94 @@ services:
       start_period: 60s
     networks:
       - hospital-lake
+    depends_on:
+      iceberg-rest:
+        condition: service_healthy
+
+  spark-smoke:
+    image: apache/spark:3.5.5-python3
+    profiles: ['smoke']
+    working_dir: /opt/hospital-lake
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Copy .env.example to .env first}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Copy .env.example to .env first}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      ICEBERG_CATALOG_URI: http://iceberg-rest:8181
+      ICEBERG_WAREHOUSE: ${ICEBERG_WAREHOUSE:-s3://warehouse/}
+      SPARK_MASTER: local[1]
+      PYTHONPATH: /opt/hospital-lake
+    volumes:
+      - .:/opt/hospital-lake:ro
+      # /tmp already exists with mode 1777 in the upstream image; Spark's
+      # non-root user can create the ivy subdirectory in a fresh named volume.
+      - spark-ivy:/tmp
+    entrypoint:
+      - /opt/spark/bin/spark-submit
+      - --driver-memory
+      - 512m
+      - --conf
+      - spark.jars.ivy=/tmp/ivy
+      - --packages
+      - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.0,org.apache.iceberg:iceberg-aws-bundle:1.9.0
+      - tests/integration/spark_iceberg_smoke.py
+    mem_limit: 1280m
+    depends_on:
+      iceberg-rest:
+        condition: service_healthy
+    networks:
+      - hospital-lake
+
+  bronze-bootstrap:
+    extends:
+      service: spark-smoke
+    entrypoint:
+      - /opt/spark/bin/spark-submit
+      - --driver-memory
+      - 512m
+      - --conf
+      - spark.jars.ivy=/tmp/ivy
+      - --packages
+      - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.0,org.apache.iceberg:iceberg-aws-bundle:1.9.0
+      - scripts/bootstrap_bronze.py
+
+  bronze-ingest:
+    extends:
+      service: spark-smoke
+    volumes:
+      - type: bind
+        source: ${BRONZE_INPUT_DIR:-./data/generated}
+        target: /opt/hospital-input
+        read_only: true
+        bind:
+          create_host_path: false
+    entrypoint:
+      - /opt/spark/bin/spark-submit
+      - --driver-memory
+      - 512m
+      - --conf
+      - spark.jars.ivy=/tmp/ivy
+      - --packages
+      - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.0,org.apache.iceberg:iceberg-aws-bundle:1.9.0
+      - spark/batch/ingest_bronze.py
+
+  bronze-smoke:
+    extends:
+      service: bronze-bootstrap
+    entrypoint:
+      - /opt/spark/bin/spark-submit
+      - --driver-memory
+      - 512m
+      - --conf
+      - spark.jars.ivy=/tmp/ivy
+      - --packages
+      - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.0,org.apache.iceberg:iceberg-aws-bundle:1.9.0
+      - tests/integration/bronze_contract_smoke.py
 
 volumes:
   minio-data:
+  iceberg-catalog:
+  spark-ivy:
 
 networks:
   hospital-lake:

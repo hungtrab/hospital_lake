@@ -101,34 +101,102 @@ See [`sitemap.md`](./sitemap.md) for what goes in each directory.
 
 ## 4. Status
 
-🚧 **Week 1 — initial batch generator.** A dependency-free Python generator produces synthetic patients, encounters, and lab results as CSV, using the fields in `plan.md`. It supports configurable scale and seed, valid foreign keys, and UTC timestamps. Parquet, the remaining entities, and the service pipeline are still planned (see [`works.md`](./works.md)).
-
-Run from the repository root with Python 3.10+:
-
-```bash
-python generators/batch_generator/generate.py --patients 1000 --seed 42
-python -m unittest discover -s tests/unit -v
-```
-
-The generator writes `patients.csv`, `encounters.csv`, and `lab_results.csv` under `data/generated/` (one row per patient in each file). Use `--output-dir` to choose another directory. Rerunning replaces these three files; the same seed and patient count reproduce the same bytes. These initial clean fixtures are inputs for future batch ingestion; intentional bad-data cases and streaming are not implemented yet.
-
-### Run local MinIO (TV2, Week 1 — task 1)
-
-Requires Docker Engine, Docker Compose v2+ (either `docker compose` or `docker-compose`), Make and curl.
+**TV1 generator — Week 1 integrated; all six Week 2 entities implemented.** A shared
+Arrow schema and generator produce patients, encounters, and lab results in
+Parquet (default) or CSV; Week 2 also includes `medications`, `vitals` and `bed_events`. Patient IDs are `P00000001`, encounter IDs
+`E000000001`, and lab IDs `L0000000001`; timestamps use UTC. Raw data includes
+configurable exact duplicates, department aliases, and invalid discharge times.
+`_manifest.json` records configuration, row counts, and injected defect counts.
 
 ```bash
 make setup
+make generate-data PATIENTS=1000 SEED=42
+make test
+# CSV compatibility output (use a separate directory from Parquet):
+make generate-data PATIENTS=1000 FORMAT=csv OUTPUT_DIR=data/generated/csv
+```
+
+`config.yaml` controls date range, departments, encounter counts and defect rates.
+The Python `generate(output_dir, patients, seed)` API still writes CSV and returns
+row counts, using clean data from the same engine. Counts for encounters and labs
+now vary with patient journeys; the former one-row-per-patient assumption and
+`patient-...` IDs must be replaced with manifest counts and actual stable IDs.
+Direct script invocation supports the same flags; add `--format csv` for CSV.
+`medications_per_encounter` configures order counts. Medication IDs use
+`M<encounter-number>-<order-number>`; orders reference valid patients/encounters
+and their times stay inside the clean encounter. `vitals_per_encounter` controls
+observation counts; units are heart rate bpm, SpO2 percent, blood pressure mmHg
+and temperature Celsius. Measurement IDs use `V<encounter-number>-<sample-number>`.
+Bed events use `assigned`, optional `transferred`, then `released` only on
+discharge; outpatient encounters have no bed journey. A transfer names the new
+bed and closes the previous assignment within the same department. Bed IDs are
+synthetic and scoped to the encounter, preventing double booking; they do not
+represent a finite hospital inventory. `bed_transfer_rate` controls transfers.
+Live batch integration remains pending.
+
+### TV1 Week 2: validate the complete generated dataset
+
+```bash
+make generate-data PATIENTS=10000
+make verify-generated INPUT_DIR=data/generated
+make validate-generator SCALES="10000 100000"
+```
+
+`verify-generated` checks actual Parquet schema, counts, non-null primary keys,
+patient/encounter foreign keys, and duplicate counts against the manifest for
+all six entities. `validate-generator` runs each scale twice in a temporary
+directory, validates both outputs and compares every file's SHA-256 plus the
+manifest. It writes a JSON report to `results/generator-validation.json`;
+`GENERATOR_REPORT` changes that path. Invalid data/contracts return a nonzero
+exit code. This validates generated sources; the live Parquet → Bronze → Trino
+gate still needs upstream infrastructure and ingestion implementation.
+
+### TV2 Week 1: local Lakehouse bootstrap
+
+Requires Docker Engine, Compose v2+, Make, curl and host Python 3.10+.
+Host Java/Spark are not needed for the Week 1 gate: Spark runs in the optional
+Compose `smoke` profile. From the repository root:
+
+```bash
+python3.12 -m venv .venv  # any installed Python 3.10+ can create this venv
+make setup PYTHON=.venv/bin/python
 make config
 make up
 make smoke-minio
+make week1-smoke PYTHON=.venv/bin/python
+make week1-recovery PYTHON=.venv/bin/python
+make test PYTHON=.venv/bin/python
 ```
 
-Expected: MinIO becomes healthy and the smoke check prints `PASS`. Open the console at http://localhost:9001 and sign in with the local credentials in `.env`. The S3 API is at http://localhost:9000; containers on the Compose network use `MINIO_ENDPOINT=http://minio:9000`. Host ports can be changed in `.env`.
+MinIO is built from pinned upstream source; the first build downloads Go and
+source dependencies. If an existing `.env` has the retired upstream image name,
+set `MINIO_IMAGE=hospital-lake/minio:RELEASE.2025-04-22T22-12-26Z`.
+`make up` starts MinIO, runs `minio-init` to create the bucket named by
+`ICEBERG_WAREHOUSE`, then starts Iceberg REST and Trino. An existing bucket is
+checked and preserved. `make bootstrap-bucket` safely repeats that step.
+`make minio-up` starts storage and bucket bootstrap only.
 
-`make up` starts both configured services. To start MinIO alone, run
-`docker compose up -d --wait minio` (or `docker-compose up -d --wait minio`).
+MinIO console: http://localhost:9001; S3 API: http://localhost:9000;
+REST API: http://localhost:8181/v1/config; Trino: http://localhost:8080.
+Ports can be configured in `.env`. Containers use `minio:9000` and
+`iceberg-rest:8181`; host-side jobs need reachable host addresses instead.
+Credentials are local synthetic-data defaults in `.env`, which must not be committed.
 
-`make down` stops the stack while preserving the `minio-data` volume. Running `make up` again reuses that volume. `docker compose down -v` deletes stored data; it is not part of the normal stop command. Use `docker-compose` instead if that is your installed CLI.
+`make week1-smoke` creates a uniquely named temporary Iceberg table in `bronze`,
+writes three synthetic rows with Spark, repeats bucket bootstrap, and verifies
+all values plus `bronze`/`silver`/`gold` visibility through Trino. It purges only
+its temporary fixture afterwards. `make week1-recovery` additionally recreates
+MinIO and catalog containers while the fixture exists, checks it with a fresh
+Spark process and Trino, then cleans up. Run recovery checks before shared
+workloads because they briefly interrupt storage/catalog services.
+`make test-minio PYTHON=.venv/bin/python` separately checks S3 object persistence.
+Live tests are explicit and are skipped by the ordinary regression suite.
+
+`make down` preserves MinIO data and the SQLite catalog volume. `make up` reuses
+them. `docker compose down -v` deletes warehouse and catalog state and is not a
+normal stop command. Make detects `docker compose` or standalone `docker-compose`;
+use `COMPOSE=...` to override. Catalog fixture is a single-node local academic
+setup, not a production HA catalog. See [local architecture](docs/architecture.md).
 
 ### TV4 Week 1: Trino row-count smoke check
 
@@ -151,19 +219,19 @@ Without `--server`, the script uses `TRINO_HOST` (default `localhost`) and
 
 Run the unit checks with `python -m unittest discover -s tests/unit -v`.
 These tests simulate CLI responses; they do not certify the live integration.
-The actual Spark → Iceberg → Trino gate remains pending. A matching row count
-alone does not prove all field values.
+A matching row count alone does not prove all field values. TV2's
+`make week1-smoke` runs an actual Spark fixture and compares complete rows.
 
 ### TV4 local Trino deployment
 
-`docker-compose.yml` currently provisions **MinIO and Trino**. Trino uses image
+`docker-compose.yml` currently provisions **MinIO, Iceberg REST Catalog and Trino**. Trino uses image
 `trinodb/trino:483` and mounts the Iceberg REST/S3 catalog in `infra/docker/trino/`, uses a 1 GiB JVM
 heap within a 2 GiB container limit, and publishes its port on localhost.
 
 1. Run `make setup` to create `.env`. It includes synthetic-data local credentials shared by MinIO and Trino; existing `.env` files are preserved.
-2. MinIO is provided on the shared Compose network. Iceberg REST Catalog and
-   bucket bootstrap remain pending TV2 tasks; the default catalog URI targets
-   the future `iceberg-rest` service. For
+2. MinIO, automatic bucket bootstrap and Iceberg REST Catalog are provided
+   on the shared Compose network. The default catalog URI targets
+   `iceberg-rest:8181`. For
    services running on the Docker Desktop host, use `host.docker.internal` in
    `.env` instead of `localhost` (which refers to the Trino container).
 3. Run `docker compose config --quiet`, then `docker compose up -d --wait trino`.
@@ -172,8 +240,9 @@ heap within a 2 GiB container limit, and publishes its port on localhost.
 The health check runs `SELECT 1`: it proves query-engine readiness only, not
 Iceberg or MinIO connectivity. The table smoke check above verifies the next
 stage once TV3 has written a fixture. Stop this service with `docker compose stop trino`.
-MinIO and Trino share the `hospital-lake` network. Catalog and Spark deployment
-remain pending. MinIO runtime verification is pending after an image pull failure.
+MinIO, catalog and Trino share the `hospital-lake` network. A Spark fixture job
+is provided in the optional `smoke` profile. Shared SparkSession creation is
+available in `spark/common/iceberg.py`; production batch/stream jobs remain pending.
 
 Once the table is available, run all four read-only probes using the CLI bundled
 in the Trino container (no host CLI installation needed):
@@ -220,8 +289,47 @@ make test
 
 The shared defaults target the Compose network. For future host-side Spark jobs,
 set reachable `MINIO_ENDPOINT` and `ICEBERG_CATALOG_URI` addresses in `.env`.
-This increment only loads and validates configuration. SparkSession creation,
-connectors, and the live Spark → Iceberg → Trino smoke test remain pending.
+This module loads and validates configuration. The Week 1 Docker smoke job and
+Week 2 Bronze bootstrap reuse `spark/common/iceberg.py` to create SparkSession.
+The production Parquet ingestion job is described below.
+
+### TV2 Week 2: Bronze table contracts
+
+With the Week 1 stack running:
+
+```bash
+make bootstrap-bronze
+make bronze-smoke PYTHON=.venv/bin/python
+```
+
+`sql/iceberg/create_bronze_tables.sql` is Spark SQL for all six
+`iceberg.bronze.*_raw` tables. `bootstrap-bronze` runs a short Docker Spark job,
+so host Spark/Java are not needed. The tables match the six Parquet source
+contracts, keep raw domain fields nullable, and require ingestion metadata:
+`_source`, `_ingested_at`, `_batch_id`, `_schema_version`; `_event_id` is optional.
+UTC source timestamps use Iceberg timestamps with time zone. Duplicates,
+department aliases and invalid domain values remain raw; Silver handles cleaning.
+CSV values that cannot be represented by the typed source schema require
+traceable quarantine in the future ingestion job, not silent casts to null.
+
+Bootstrap validates existing schemas, current partition specs, format version,
+write properties and S3 metadata location before creating missing tables. Normal
+reruns do not replace tables, change partitions or rewrite data. If a contract
+has drifted, the command fails and requires an explicit migration.
+
+`bronze-smoke` generates a temporary 32-patient six-entity Parquet dataset,
+uses a UUID smoke namespace, writes intentional duplicates/invalid vitals,
+compares complete Spark values and Trino ID checksums, reads metadata JSON
+through authenticated MinIO S3, verifies bootstrap reruns preserve metadata,
+and proves incompatible existing schemas/partitions/properties are rejected.
+Only its temporary namespace is purged; canonical Bronze tables and datasets
+are preserved. It reports file count, average bytes and partition count for
+these tiny fixtures, not a throughput benchmark.
+
+Partition choices and the handoff to TV3 ingestion are in
+[the data model](docs/data-model.md). Production `ingest_bronze.py` remains TV3's
+Week 2 task; this table-contract check does not certify the full weekly
+`generate-data → batch-bronze → verify-bronze` integration gate.
 
 ### TV4 Week 2: Bronze verification
 
@@ -232,15 +340,14 @@ row counts and a SHA-256 checksum of sorted stable IDs. The queries live in
 Missing, replaced, or duplicated IDs and query failures return a nonzero exit
 code. Each entity reports its own PASS or FAIL.
 
-The current generator writes patients, encounters, and lab results. Until the
-other entity sources exist, run:
+The current generator writes all six entities as Parquet or CSV. To verify all six sources after Bronze ingestion, run:
 
 ```bash
-make verify-bronze BATCH_ID=<id> ENTITIES="patients encounters lab_results"
+make verify-bronze BATCH_ID=<id> ENTITIES="patients encounters lab_results medications vitals bed_events"
 ```
 
 For a host Trino CLI, run `python -m scripts.verify_bronze --batch-id <id>
---entities patients encounters lab_results` and optionally supply `--server`.
+--entities patients encounters lab_results medications vitals bed_events` and optionally supply `--server`.
 Parquet input requires `pyarrow`. The checksum covers IDs; it does not validate
 non-key values. A live run requires completed Bronze ingestion with `_batch_id`.
 
@@ -277,20 +384,120 @@ same cutoff replace previous output. A local Spark test checks exact sample
 values; live Spark → Iceberg → Trino remains dependent on upstream Silver tables
 and the REST catalog.
 
+### TV3 Week 2: Parquet → Bronze Iceberg
+
+Install the pinned Spark runtime in an isolated environment (Python 3.10+,
+Java 17+). The session loads the matching Iceberg 1.10.1 Spark 4.0 / Scala 2.13
+runtime and AWS bundle from Maven on first use. Existing Compose Spark 3.5 jobs
+keep their submitted Iceberg packages and the shared `create_spark_session(app_name, config)` API.
+Configuration follows the
+[Iceberg catalog configuration](https://iceberg.apache.org/docs/1.10.1/spark-configuration/)
+and [S3FileIO settings](https://iceberg.apache.org/docs/1.10.1/aws/).
+
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements-spark.txt
+TZ=UTC make test PYTHON=.venv/bin/python
+make test-bronze PYTHON=.venv/bin/python
+```
+
+`test-bronze` creates temporary raw Parquet and real Iceberg tables in a local
+Hadoop catalog. It checks all six entities, exact raw values including duplicates
+and null IDs, metadata, retry through a fresh SQL session, a new batch, recovery
+after an interrupted multi-table run, and visible failures for missing inputs,
+missing tables, schema drift, and corrupt Parquet. It does not exercise REST,
+MinIO, or Trino. It also verifies generated Parquet against the source-controlled
+Bronze DDL.
+
+For the actual REST/MinIO pipeline, generate immutable Parquet inputs with
+`make generate-data`, start the stack with `make up`, then run
+`make bootstrap-bronze` to create the existing source-controlled table contracts.
+Export the settings from `.env`
+as shown above; host-side jobs need reachable endpoints (for example,
+`http://localhost:9000` and `http://localhost:8181` if those ports are published).
+Then run:
+
+```bash
+make batch-bronze PYTHON=.venv/bin/python BATCH_ID=demo-001
+# Or ingest only an available subset while teammates finish their modules:
+make batch-bronze PYTHON=.venv/bin/python BATCH_ID=demo-001 ENTITIES="patients encounters lab_results"
+```
+
+To use the existing Compose Spark 3.5 image instead of installing host Java/Spark,
+run after generating inputs and bootstrapping Bronze:
+
+```bash
+make batch-bronze-docker BATCH_ID=demo-001
+make verify-bronze BATCH_ID=demo-001
+# An external local directory is also supported:
+make batch-bronze-docker BATCH_ID=demo-002 INPUT_DIR="/path/to/parquet inputs"
+```
+
+This runs the same ingestion job using the shared service endpoints and
+credentials. `INPUT_DIR` becomes the read-only `/opt/hospital-input` mount through
+`BRONZE_INPUT_DIR`; an absent host directory fails rather than creating an empty
+one. The Spark job runs as the upstream image's non-root user, so mounted files
+must be readable by that user. The job requires Maven access on first use.
+This command is an alternate submission path; the full live gate still needs
+verification on a machine with Docker daemon access.
+
+`INPUT_DIR` defaults to `data/generated`. Each selected entity must have exactly
+one `<entity>.parquet` file/directory or `<entity>/` directory, using the canonical
+names `patients`, `encounters`, `lab_results`, `medications`, `vitals`, `bed_events`.
+The target is `iceberg.bronze.<entity>_raw`. Raw field names and types must match
+the target's domain fields exactly; source timestamps are preserved without
+normalization. The five added metadata columns are `_source STRING` (original
+file URI), `_ingested_at TIMESTAMP` (UTC), `_batch_id STRING`, `_event_id STRING`
+(source `event_id`, otherwise null), and `_schema_version INT` (1). Source columns
+must not use these reserved names. Inputs and schemas are checked for all selected
+entities before any table is written. Unreadable Parquet fails the job visibly;
+domain validation/quarantine belongs to the upcoming Silver work.
+
+Each table is appended in one Iceberg commit. A retry with the same `BATCH_ID`
+compares the raw rows with the committed batch and skips identical tables, so it
+also resumes after a later table fails. Comparison preserves duplicate counts
+and ignores row order and ingestion metadata. Changed values, added/removed rows,
+or duplicate counts fail visibly; use a new ID for changed inputs. This exact
+retry check scans and compares both datasets; it is a correctness check rather
+than a constant-time lookup.
+Use one writer at a time per target table and keep inputs immutable for a given
+batch ID; concurrent same-ID submissions are not protected by a distributed lock.
+Do not reuse an ID to load changed data or delete rows from a committed Bronze
+batch. A new ID appends a new raw batch, preserving source duplicates. Empty
+inputs produce zero rows. JSON logs report table, batch ID, written/skipped/empty
+status, input/output rows and duration; invalid/duplicate counts are null because
+this raw stage does not evaluate domain quality.
+Failures also emit a JSON event with batch ID, table (when known), phase
+(`startup`, `preflight`, or `ingest`), exception type and elapsed time, then
+propagate the original exception so the command fails. The structured event
+omits exception messages and raw values; Python/Spark error diagnostics may
+still include the original exception.
+
+Once the live stack is available, TV4's existing row-count smoke command can query
+each table (substitute the actual source count):
+
+```bash
+make trino-smoke TABLE=iceberg.bronze.patients_raw EXPECTED_ROWS=1000
+```
+
+The full Week 2 gate is `make generate-data`, `make bootstrap-bronze`,
+`make batch-bronze BATCH_ID=demo-001`, then `make verify-bronze BATCH_ID=demo-001`.
+The local integration suite does not certify this live MinIO/REST/Trino gate.
+
 ### TV4 Week 4: streaming Bronze and quarantine
 
 `spark/streaming/bronze_sink.py` exposes `start_stream(validated,
 checkpoint_location=...)` for TV3's Structured Streaming Kafka reader. Its input
 must retain Kafka `topic`, `partition`, `offset`, `timestamp`, and binary `value`,
-plus parsed `event_id`, `event_time`, `source`, `version`, and
+plus parsed `event_id`, `event_time` (UTC timestamp), `source`, `version`, and
 `validation_error` (null means valid). It creates two Iceberg tables from
 `sql/iceberg/create_stream_bronze_tables.sql`:
 `iceberg.bronze.stream_events_raw` and
 `iceberg.bronze.stream_events_quarantine`. Both retain original Kafka bytes;
-quarantine additionally stores the validation reason. The sink uses Kafka
-topic/partition/offset to avoid duplicate rows on micro-batch retry, while
-allowing distinct Kafka messages with the same `event_id` into raw Bronze.
-The checkpoint path must be durable across restarts.
+quarantine additionally stores the validation reason. Kafka
+topic/partition/offset prevent duplicate rows on micro-batch retry, while
+distinct Kafka messages with the same `event_id` remain in raw Bronze.
+The checkpoint path must persist across restarts.
 
 When the Kafka producer, reader, REST catalog, and MinIO are running, start the
 reader using the sink above, then run the continuous Trino probe:
@@ -304,9 +511,9 @@ python -m scripts.stream_bronze_probe --duration 300 --interval 10 \
 
 The probe checks that Bronze grows for five minutes, that Kafka coordinates do
 not repeat across raw/quarantine, and (optionally) that malformed events reach
-quarantine. It fails on query errors or stalled ingestion. Unit tests for the
-sink contract and probe run with `make test`; a live five-minute result remains
-pending until the upstream reader and services are available.
+quarantine. It fails on query errors or stalled ingestion. Contract tests run
+with `make test`; a live five-minute result remains pending until the upstream
+reader and services are available.
 
 ## 5. Team
 
