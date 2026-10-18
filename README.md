@@ -484,6 +484,42 @@ The full Week 2 gate is `make generate-data`, `make bootstrap-bronze`,
 `make batch-bronze BATCH_ID=demo-001`, then `make verify-bronze BATCH_ID=demo-001`.
 The local integration suite does not certify this live MinIO/REST/Trino gate.
 
+### TV4 Week 4: streaming Bronze and quarantine
+
+`spark/streaming/bronze_sink.py` exposes `start_stream(validated,
+checkpoint_location=...)` for TV3's Structured Streaming Kafka reader. Its input
+must retain Kafka `topic`, `partition`, `offset`, `timestamp`, and binary `value`,
+plus parsed `event_id`, `event_time` (UTC timestamp), `source`, `version`, and
+`validation_error` (null means valid). It creates two Iceberg tables from
+`sql/iceberg/create_stream_bronze_tables.sql`:
+`iceberg.bronze.stream_events_raw` and
+`iceberg.bronze.stream_events_quarantine`. Both retain original Kafka bytes;
+quarantine additionally stores the validation reason. Kafka
+topic/partition/offset prevent duplicate rows on micro-batch retry, while
+distinct Kafka messages with the same `event_id` remain in raw Bronze.
+The checkpoint path must persist across restarts.
+
+When the Kafka producer, reader, REST catalog, and MinIO are running, start the
+reader using the sink above, then run the continuous Trino probe:
+
+```bash
+make stream-bronze-probe
+# Or use a host Trino CLI and require a bad event during the window:
+python -m scripts.stream_bronze_probe --duration 300 --interval 10 \
+  --min-events 1 --require-quarantine
+```
+
+The probe checks that Bronze grows for five minutes, that Kafka coordinates do
+not repeat across raw/quarantine, and (optionally) that malformed events reach
+quarantine. It fails on query errors or 60 seconds without a new row; adjust
+that limit with `--max-idle`. Contract tests run
+with `make test`; a live five-minute result remains pending until the upstream
+reader and services are available.
+
+An isolated Spark/Iceberg integration test exercises raw bytes, malformed-event
+quarantine, and retries without Kafka or Docker. Install `requirements-spark.txt`
+and run `make test-stream-bronze`; the first run needs Maven access for Iceberg.
+
 ## 5. Team
 
 Four equal members (TV1–TV4). Work allocation and weekly integration gates are defined in [`works.md`](./works.md).

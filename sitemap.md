@@ -23,6 +23,7 @@ container recreation; the live Week 1 recovery gate passed locally on 2026-10-12
 TV4 smoke checks remain available.
 TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. The Week 1 SparkSession setup is now shared in `spark/common/iceberg.py` and reused by fixtures/bootstrap; batch ingestion is implemented in `spark/batch/ingest_bronze.py`, with metadata and serial batch-ID retries. Unit contracts, structured failure logging (`tests/unit/test_bronze_logging.py`), session compatibility checks (`tests/unit/test_iceberg_session.py`) and real local Spark/Iceberg integration tests cover preservation, retry and failure behavior.
 TV4's Week 3 `spark/batch/silver_to_gold.py` computes four Gold metrics from Silver; `scripts/run_gold.py` submits it with shared Spark configuration. Exact-value local Spark tests and five Trino query examples exist. Live Gold validation still needs Silver tables and their ingestion pipeline.
+TV4's Week 4 `spark/streaming/bronze_sink.py` writes validated Kafka micro-batches into Iceberg Bronze/quarantine; `scripts/stream_bronze_probe.py` checks progress over five minutes. Live validation awaits the Kafka reader and producer.
 TV2 Week 2 provides six Bronze DDL contracts, daily hidden partitions and an idempotent, drift-checking table bootstrap. `bronze-smoke` validates isolated Parquet fixtures, S3 metadata, Trino compatibility, raw preservation and reruns. Production Bronze ingestion is available through `make batch-bronze`; the live Week 2 integration gate still needs to be run.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
@@ -113,13 +114,13 @@ ingestion remains pending. CSV API clean fixtures and CLI raw fixtures share the
 |---|---|---|---|---|
 | `common/` | `config.py`, `schemas.py`, `iceberg.py`, `bronze.py` | Implemented env config, shared SparkSession and Bronze DDL loader/validation. Shared processing schemas/data-quality helpers remain planned. **Reuse, don't duplicate.** | TV3 | 1, 3 |
 | `batch/` | `ingest_bronze.py`, `bronze_to_silver.py`, `silver_to_gold.py`, `main.py` | raw Parquet → Bronze → Silver → Gold. TV4's `silver_to_gold.py` builds four historical Gold tables with a deterministic cutoff and full-table overwrite. | TV3 (Bronze), TV1/TV2 (Silver), TV4 (Gold) | 2–3 |
-| `streaming/` | `kafka_to_bronze.py`, `realtime_aggregates.py`, `main.py` | Kafka → validate → DLQ → dedup by `event_id` → watermark → Iceberg Bronze + realtime aggregates → ClickHouse. | TV3, TV4 (sink/DLQ), TV1/TV2 (aggregates) | 4–5 |
+| `streaming/` | `kafka_to_bronze.py`, `bronze_sink.py`, `realtime_aggregates.py`, `main.py` | TV4's sink writes valid Kafka bytes and invalid events to Bronze/quarantine by offset; reader, dedup, watermark and aggregates remain separate. | TV3, TV4 (sink/quarantine), TV1/TV2 (aggregates) | 4–5 |
 
 ### 3.5 `sql/` — Lakehouse DDL + Serving queries
 
 | Path | Planned files | Responsibility | TV | Wk |
 |---|---|---|---|---|
-| `iceberg/` | `create_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | TV2 six Bronze definitions (nullable domain fields, required metadata, format v2); TV4 four Gold definitions. Silver DDL pending | TV2/TV4 | 2–3 |
+| `iceberg/` | `create_bronze_tables.sql`, `create_stream_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | TV2 six Bronze definitions; TV4 two stream Bronze/quarantine and four Gold definitions. Silver DDL pending | TV2/TV4 | 2–4 |
 | `trino/` | `verify_bronze.sql`, `queries.sql` | Bronze ID checks and five historical Gold queries | TV4 | 1–3 |
 | `clickhouse/` | `schema.sql`, `views.sql` | Realtime serving tables: `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | TV3/TV4 | 5 |
 
@@ -152,7 +153,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Path | Content | Wk |
 |---|---|---|
 | `unit/` | Generators, schemas, normalization, validation, aggregation logic (unittest); `test_gold_metrics.py` uses local Spark | 1+ |
-| `integration/` | `bronze_contract_smoke.py` writes/checks/drops only UUID-isolated fixtures and tests drift refusal; `spark_iceberg_smoke.py` supplies write/read/purge fixture actions; `test_minio.py` is an opt-in S3 persistence test. Bronze verifier contract checks; live Spark → Iceberg, Trino → Iceberg, Kafka → Spark, Spark → ClickHouse when services are available | 1+ |
+| `integration/` | Bronze fixture, persistence and verifier checks; five-minute stream progress probe logic; opt-in local Spark/Iceberg stream sink test; live Kafka → Spark and Spark → ClickHouse when services are available | 1+ |
 | `e2e/` | Event → Kafka → Streaming → ClickHouse/Trino assertions; full regression suite | 5, 8 |
 
 ### 3.9 `scripts/` — Automation
@@ -166,6 +167,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | `trino_smoke.py` | TV4: row-count check; `--check-stack` probes engine/catalog/count/data, `--compose` uses container CLI. Uses `TRINO_HOST`/`TRINO_PORT` or `--server`; returns nonzero on failure. | 1 |
 | `verify_bronze.py` | TV4: compare CSV/Parquet source count and stable-ID checksum with one Bronze `_batch_id` through Trino; `make verify-bronze` | 2 |
 | `run_gold.py` | TV4: submit Gold Spark job using shared Iceberg/MinIO settings; `make gold` | 3 |
+| `stream_bronze_probe.py` | TV4: poll Trino for Bronze growth, quarantine and duplicate offsets over five minutes; `make stream-bronze-probe` | 4 |
 | `reset.sh` | Dev reset (not a substitute for idempotency) | 1+ |
 | `check_generator.py` | TV1 Week 2: actual six-entity schema/FK/count validation and same-seed scale reruns; `verify-generated`, `validate-generator`; JSON report in ignored `results/` | 2 |
 | `seed.sh` | Generate + load demo dataset | 2 |
@@ -182,6 +184,7 @@ Scale/failure-injection scripts (Week 7) also go here.
 |---|---|---|
 | Iceberg namespaces | `bronze`, `silver`, `gold` | `sql/iceberg/` |
 | Bronze tables | `bronze.{patients,encounters,lab_results,medications,vitals,bed_events}_raw` | `plan.md` §7.1 |
+| Streaming Bronze tables | `bronze.stream_events_raw`, `bronze.stream_events_quarantine` | `sql/iceberg/create_stream_bronze_tables.sql` |
 | Silver tables | `silver.{patients,encounters,lab_results,medications,vitals,bed_events}` | `plan.md` §7.2 |
 | Gold tables | `gold.hospital_hourly_metrics`, `gold.department_daily_metrics`, `gold.icu_occupancy`, `gold.lab_daily_metrics`, `gold.patient_timeline`, `gold.hospital_current_state` | `plan.md` §7.3 |
 | Kafka topics | `hospital.{patient,encounter,lab,medication,vitals,bed,dlq}` | `plan.md` §6 |
