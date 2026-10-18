@@ -277,6 +277,37 @@ same cutoff replace previous output. A local Spark test checks exact sample
 values; live Spark → Iceberg → Trino remains dependent on upstream Silver tables
 and the REST catalog.
 
+### TV4 Week 4: streaming Bronze and quarantine
+
+`spark/streaming/bronze_sink.py` exposes `start_stream(validated,
+checkpoint_location=...)` for TV3's Structured Streaming Kafka reader. Its input
+must retain Kafka `topic`, `partition`, `offset`, `timestamp`, and binary `value`,
+plus parsed `event_id`, `event_time`, `source`, `version`, and
+`validation_error` (null means valid). It creates two Iceberg tables from
+`sql/iceberg/create_stream_bronze_tables.sql`:
+`iceberg.bronze.stream_events_raw` and
+`iceberg.bronze.stream_events_quarantine`. Both retain original Kafka bytes;
+quarantine additionally stores the validation reason. The sink uses Kafka
+topic/partition/offset to avoid duplicate rows on micro-batch retry, while
+allowing distinct Kafka messages with the same `event_id` into raw Bronze.
+The checkpoint path must be durable across restarts.
+
+When the Kafka producer, reader, REST catalog, and MinIO are running, start the
+reader using the sink above, then run the continuous Trino probe:
+
+```bash
+make stream-bronze-probe
+# Or use a host Trino CLI and require a bad event during the window:
+python -m scripts.stream_bronze_probe --duration 300 --interval 10 \
+  --min-events 1 --require-quarantine
+```
+
+The probe checks that Bronze grows for five minutes, that Kafka coordinates do
+not repeat across raw/quarantine, and (optionally) that malformed events reach
+quarantine. It fails on query errors or stalled ingestion. Unit tests for the
+sink contract and probe run with `make test`; a live five-minute result remains
+pending until the upstream reader and services are available.
+
 ## 5. Team
 
 Four equal members (TV1–TV4). Work allocation and weekly integration gates are defined in [`works.md`](./works.md).

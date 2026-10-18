@@ -1,7 +1,7 @@
 PYTHON ?= python3
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then printf 'docker compose'; else printf 'docker-compose'; fi)
 
-.PHONY: help setup up down config smoke-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold
+.PHONY: help setup up down config smoke-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold stream-bronze-probe
 .DEFAULT_GOAL := help
 
 help:
@@ -48,3 +48,6 @@ verify-bronze:
 
 gold:
 	$(PYTHON) -m scripts.run_gold
+
+stream-bronze-probe:
+	$(PYTHON) -m scripts.stream_bronze_probe --compose --duration 300 --min-events 1
