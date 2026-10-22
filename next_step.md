@@ -20,7 +20,7 @@
 ```bash
 cp .env.example .env
 make up
-make batch          # generate → bootstrap Bronze → ingest Bronze → Silver → Gold
+make batch          # generate → bootstrap Bronze → ingest Bronze → verify → Silver (+ Gold khi TV4 xong T4.1)
 make query          # các analytical query trên Trino trả về dữ liệu thật
 make test
 ```
@@ -36,7 +36,7 @@ Streaming là điểm cộng: làm song song nhưng **không được làm chậ
 | W1 — Spark → Iceberg → Trino | ✅ Pass (`make week1-smoke`, `make week1-recovery`, 12/10) |
 | W2 — Parquet → Bronze → verify | ✅ Gate live pass 22/10 (1.000 patients, 6 bảng khớp số dòng + checksum ID) sau khi sửa 2 bug tích hợp — **PR #10 đã merge** |
 | W3 — Bronze → Silver → Gold → SQL | ⚠️ **Đang hở**: framework data-quality (TV3) ✅, Gold job (TV4) ✅, Silver patients/encounters (TV1) ✅ **PR #12 merged**, `make batch` tới Silver (TV1, T1.2); Silver clinical (TV2) và `gold-docker` (TV4) chưa có ⇒ Gold chưa chạy được trên dữ liệu thật |
-| W4 — Simulator → Kafka → Streaming → Bronze | ⚠️ Kafka reader + dedup (TV3) ✅, stream Bronze sink + DLQ (TV4) ✅; **thiếu producer (TV1)** và **Kafka local stack (TV2)** |
+| W4 — Simulator → Kafka → Streaming → Bronze | ⚠️ Kafka reader + dedup (TV3) ✅, stream Bronze sink + DLQ (TV4) ✅, producer (TV1) ở **PR #13**; **thiếu Kafka local stack (TV2)** |
 
 Vấn đề phát hiện khi chạy lại test (TV1, 22/10):
 

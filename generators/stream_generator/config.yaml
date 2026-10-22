@@ -1,0 +1,17 @@
+# Realtime hospital event simulator (plan.md §17.2).
+# CLI flags (--rate, --seed, --duration, --max-events) override these values.
+
+seed: 42
+events_per_second: 1000
+duration_seconds: 60
+
+# Upper bound of simultaneously open encounters (current hospital census).
+max_active_encounters: 500
+returning_patient_probability: 0.3
+
+# Intentional defects for robust stream processing. Late events are older than
+# the 10-minute streaming watermark; invalid messages must reach the DLQ.
+late_event_probability: 0.02
+late_delay_minutes: [11, 30]
+duplicate_probability: 0.01
+invalid_event_probability: 0.005
