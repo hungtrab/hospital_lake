@@ -5,6 +5,8 @@ Inputs must remain immutable and runs for the same table must be serialized.
 Each table append is atomic; a retry skips tables already committed by the batch.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging
@@ -110,7 +112,11 @@ def ingest_bronze(spark, input_dir: Path, batch_id: str, entities=ENTITIES) -> l
                         .withColumn("_event_id", F.col("event_id").cast("string")
                                     if "event_id" in raw.columns else F.lit(None).cast("string"))
                         .withColumn("_schema_version", F.lit(1)))
-                data.select(*spark.table(table).columns).writeTo(table).append()
+                # Daily-partitioned tables span hundreds of partitions per batch. A fanout
+                # writer keeps one Parquet writer open per partition and exhausts a small
+                # driver heap; clustered writes ask Iceberg to sort by partition instead.
+                (data.select(*spark.table(table).columns).writeTo(table)
+                 .option("fanout-enabled", "false").append())
                 output_rows = input_rows
                 status = "written"
             report = {
