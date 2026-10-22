@@ -37,6 +37,7 @@ TV2 Week 2 provides six Bronze DDL contracts, daily hidden partitions and an ide
 ├── plan.md              # architecture / scope / milestones (source of truth)
 ├── works.md             # 9-week TV1–TV4 allocation + weekly gates
 ├── sitemap.md           # this file
+├── next_step.md         # current sprint plan: per-TV tasks until Checkpoint 1 (26/10)
 ├── README.md            # project overview
 ├── .gitignore
 │
