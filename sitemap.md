@@ -91,7 +91,7 @@ Docs describe **what exists**, never planned-but-unbuilt features (`AGENTS.md` �
 | Path | Planned files | Responsibility | Wk |
 |---|---|---|---|
 | `batch_generator/` | `generate.py`, `config.yaml`, `schemas.py` | Synthetic patients, encounters, labs, medications, vitals, bed_events → Parquet. Deterministic seed, configurable scale (1k → 1M). | 1–2 |
-| `stream_generator/` | `producer.py`, `event_models.py`, `config.yaml` | Kafka producer with common event envelope, `--rate`, key = `patient_id`; injects late / duplicate / invalid events. | 4, 7 |
+| `stream_generator/` | `producer.py`, `event_models.py`, `config.yaml` | **Implemented (TV1, W4).** Deterministic journey simulator (no patient has two open encounters) + Kafka producer: shared envelope accepted by `spark/streaming/kafka_reader.py`, `--rate`, key = `patient_id`, configurable late (> 10 min watermark) / duplicate / invalid events. `make produce`, `make produce-dry-run`. Uses `kafka-python`. | 4, 7 |
 
 Batch source contract: `patients`, `encounters`, `lab_results` files use the
 fields in `plan.md` §5, with typed UTC timestamps in Parquet and ISO UTC strings

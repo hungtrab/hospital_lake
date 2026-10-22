@@ -155,3 +155,53 @@ isolated namespace, including duplicates, invalid raw vital values, full Spark
 row equality, Trino ID checksums, MinIO metadata existence, safe bootstrap rerun
 and refusal of incompatible tables. It is a fixture check, not the production
 Week 2 batch gate. Canonical tables stay available for TV3/TV4 after the check.
+
+## Week 4 realtime events (TV1)
+
+`generators/stream_generator/` simulates live hospital activity and publishes
+JSON envelopes to Kafka (default topic `hospital.events`, key = `patient_id`):
+
+```json
+{"event_id": "<uuid4>", "event_type": "ADMISSION", "event_time": "2026-10-22T10:00:00.000Z",
+ "source": "hospital-simulator", "version": 1,
+ "payload": {"patient_id": "PS00000001", "encounter_id": "ES000000001",
+             "encounter_type": "inpatient", "department": "SURGERY"}}
+```
+
+| Event type | Payload fields (all carry `patient_id`; encounter events carry `encounter_id`) |
+|---|---|
+| `PATIENT_REGISTERED` | `gender`, `birth_year`, `city` |
+| `ADMISSION` | `encounter_type`, `department` (canonical) |
+| `BED_ASSIGNED`, `BED_RELEASED` | `department`, `bed_id` |
+| `TRANSFER` | `department`, `from_bed_id`, `to_bed_id` |
+| `LAB_RESULT` | `test_code`, `test_name`, `result_value`, `unit`, `reference_low`, `reference_high`, `is_abnormal` |
+| `VITAL_MEASUREMENT` | `heart_rate`, `spo2`, `systolic_bp`, `diastolic_bp`, `temperature` |
+| `MEDICATION_ORDER` | `drug_name`, `dose`, `dose_unit`, `route` |
+| `DISCHARGE` | `department` |
+
+The admission/discharge time is the envelope `event_time` (UTC, wall clock).
+Stream IDs use their own prefixes (`PS…`, `ES…`) so they never collide with the
+batch dataset. Per encounter the order is `ADMISSION` → `BED_ASSIGNED` (non
+outpatient) → clinical events / `TRANSFER` → `DISCHARGE` → `BED_RELEASED`; new
+patients are registered first, and a returning patient is only re-admitted
+after discharge. At most `max_active_encounters` encounters are open.
+
+Defects (rates in `config.yaml`, separate RNG so clean content is unchanged):
+late events (`event_time` 11–30 minutes old, beyond the 10-minute watermark),
+exact duplicate messages, and invalid messages (truncated JSON, missing
+`event_id`, unknown event type, unparseable `event_time`, non-object payload).
+A unit test feeds generated messages through TV3's `parse_kafka_events` and
+`deduplicate_events`: only invalid messages are rejected and duplicates collapse.
+
+```bash
+make produce-dry-run MAX_EVENTS=5                                 # JSON lines, no Kafka
+make produce KAFKA_BOOTSTRAP_SERVERS=localhost:9092 RATE=1000 DURATION=60
+```
+
+The producer logs one JSON stats line every 10 seconds and at exit
+(`events_sent`, `events_per_second`, `valid/late/duplicate/invalid_events`).
+Local measurement, 2026-10-22, against a temporary single-node Kafka 3.9.1
+container (3 partitions) on the same 16-core machine: target 1,000/s → 10,029
+messages consumed, every key on a single partition; target 2,000/s → 20,000 in
+10.0 s; target 10,000/s → 100,000 in 10.4 s (9,615/s, one Python process).
+These are producer-only numbers, not end-to-end stream throughput.
