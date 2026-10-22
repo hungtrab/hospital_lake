@@ -484,6 +484,37 @@ The full Week 2 gate is `make generate-data`, `make bootstrap-bronze`,
 `make batch-bronze BATCH_ID=demo-001`, then `make verify-bronze BATCH_ID=demo-001`.
 The local integration suite does not certify this live MinIO/REST/Trino gate.
 
+### TV3 Week 4: Kafka envelope reader
+
+`spark/streaming/kafka_reader.py` reads configured Kafka topics, decodes the
+shared event envelope, validates event ID/type/time/source/version/payload, and
+keeps malformed messages in the stream with a `validation_error`. Kafka topic,
+partition, offset, timestamp, original bytes, and extracted payload JSON remain
+available to the sink and downstream consumers.
+`deduplicate_events()` supplies a valid-only view deduplicated by `event_id`
+with a configurable event-time watermark (10 minutes by default). The Bronze
+path keeps distinct Kafka offsets, including repeated event IDs, for raw replay;
+stateful downstream consumers can use the deduplicated view.
+
+After the Kafka service and stream Bronze tables are available, install
+`requirements-spark.txt`, export the local service settings, and start the reader:
+
+```bash
+set -a; source .env; set +a
+export MINIO_ENDPOINT=http://localhost:9000
+export ICEBERG_CATALOG_URI=http://localhost:8181
+export KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+export KAFKA_TOPICS=hospital.events
+make stream-bronze PYTHON=.venv/bin/python CHECKPOINT_LOCATION="$PWD/checkpoints/stream-bronze"
+```
+
+The checkpoint directory is ignored by Git and must persist across process
+restarts. The reader downloads the Spark Kafka connector matching the installed
+Spark 3.5 or 4.0 runtime on first use. Local Spark tests cover valid and
+malformed envelopes, retained raw bytes, event-time parsing, duplicate filtering,
+and watermark attachment. They do not certify the live Kafka → Spark → Iceberg
+integration gate.
+
 ### TV4 Week 4: streaming Bronze and quarantine
 
 `spark/streaming/bronze_sink.py` exposes `start_stream(validated,
@@ -500,7 +531,7 @@ distinct Kafka messages with the same `event_id` remain in raw Bronze.
 The checkpoint path must persist across restarts.
 
 When the Kafka producer, reader, REST catalog, and MinIO are running, start the
-reader using the sink above, then run the continuous Trino probe:
+reader with `make stream-bronze`, then run the continuous Trino probe:
 
 ```bash
 make stream-bronze-probe
@@ -513,8 +544,8 @@ The probe checks that Bronze grows for five minutes, that Kafka coordinates do
 not repeat across raw/quarantine, and (optionally) that malformed events reach
 quarantine. It fails on query errors or 60 seconds without a new row; adjust
 that limit with `--max-idle`. Contract tests run
-with `make test`; a live five-minute result remains pending until the upstream
-reader and services are available.
+with `make test`; a live five-minute result remains pending until Kafka, REST,
+and MinIO are available.
 
 An isolated Spark/Iceberg integration test exercises raw bytes, malformed-event
 quarantine, and retries without Kafka or Docker. Install `requirements-spark.txt`

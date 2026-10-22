@@ -131,6 +131,7 @@ def parse_kafka_events(records):
         F.col("_event_time").alias("event_time"),
         source.alias("source"),
         F.col("_version").alias("version"),
+        F.col("_payload_json").alias("payload"),
         F.when(F.size(reasons) > 0, F.concat_ws("|", reasons))
         .otherwise(F.lit(None).cast("string"))
         .alias("validation_error"),

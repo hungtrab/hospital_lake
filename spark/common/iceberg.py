@@ -9,7 +9,7 @@ ICEBERG_PACKAGES = (
 )
 
 
-def create_spark_session(app_name, config=None):
+def create_spark_session(app_name, config=None, *, extra_packages=()):
     import pyspark
     from pyspark import SparkConf
     from pyspark.sql import SparkSession
@@ -44,7 +44,13 @@ def create_spark_session(app_name, config=None):
                         "org.apache.iceberg:iceberg-aws-bundle:1.9.0")
         else:
             raise ValueError("Supported Spark versions: 3.5 and 4.0")
-    settings["spark.jars.packages"] = packages
+    package_list = [package.strip() for package in packages.split(",") if package.strip()]
+    for package in extra_packages:
+        if not package or not package.strip():
+            raise ValueError("extra Spark packages must be non-empty coordinates")
+        if package.strip() not in package_list:
+            package_list.append(package.strip())
+    settings["spark.jars.packages"] = ",".join(package_list)
     builder = SparkSession.builder.master(config.master).appName(app_name)
     for key, value in settings.items():
         builder = builder.config(key, value)

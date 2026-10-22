@@ -55,6 +55,7 @@ class KafkaReaderTests(unittest.TestCase):
         self.assertEqual(valid.event_id, "e1")
         self.assertEqual(valid.event_type, "ADMISSION")
         self.assertEqual(valid.version, 1)
+        self.assertEqual(valid.payload, '{"patient_id":"p1"}')
         self.assertEqual(valid.value, rows[0][4])
         utc_event_time = (parsed_frame.where("offset = 1")
                           .selectExpr("date_format(event_time, 'yyyy-MM-dd HH:mm:ss') as event_time")
