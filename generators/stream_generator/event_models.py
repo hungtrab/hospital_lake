@@ -11,6 +11,11 @@ BED_ASSIGNED -> LAB_RESULT / VITAL_MEASUREMENT / MEDICATION_ORDER / TRANSFER
 -> DISCHARGE -> BED_RELEASED. Content depends only on the seed; event times
 come from an injectable clock so live runs use wall-clock UTC.
 
+``run_id`` namespaces patient/encounter IDs and event IDs. The producer sets a
+fresh run ID per process start, so a restarted producer never replays the
+previous run's IDs (which the stream would drop as duplicates or treat as
+re-admissions); a fixed ``--run-id`` reproduces a run exactly.
+
 On purpose, a configurable fraction of messages is defective (AGENTS.md §27):
 exact duplicates, late events (event_time older than the stream watermark)
 and invalid messages that the stream must route to its DLQ/quarantine.
@@ -18,8 +23,10 @@ and invalid messages that the stream must route to its DLQ/quarantine.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import random
+import re
 import uuid
 from collections import deque
 from dataclasses import dataclass, field
@@ -64,6 +71,7 @@ def iso(value: datetime) -> str:
 @dataclass(frozen=True)
 class SimulatorConfig:
     seed: int = 42
+    run_id: str = ""
     max_active_encounters: int = 500
     returning_patient_probability: float = 0.3
     late_event_probability: float = 0.02
@@ -72,6 +80,8 @@ class SimulatorConfig:
     invalid_event_probability: float = 0.005
 
     def __post_init__(self) -> None:
+        if not re.fullmatch(r"[A-Za-z0-9]{0,24}", self.run_id):
+            raise ValueError("run_id must be at most 24 letters/digits")
         if self.max_active_encounters < 1:
             raise ValueError("max_active_encounters must be >= 1")
         for name in ("returning_patient_probability", "late_event_probability",
@@ -116,6 +126,9 @@ class HospitalSimulator:
         self._returning: List[str] = []  # registered patients with no open encounter
         self._counters: Dict[str, int] = {"patient": 0, "encounter": 0}
         self._wards = tuple(d for d in DEPARTMENTS if d not in ("EMERGENCY", "ICU"))
+        run = self.config.run_id
+        self._id_infix = f"{run}-" if run else ""
+        self._id_mask = int(hashlib.sha256(run.encode()).hexdigest()[:32], 16) if run else 0
 
     # --- public API -----------------------------------------------------------
 
@@ -148,7 +161,7 @@ class HospitalSimulator:
             patient_id = self._returning.pop()
         else:
             self._counters["patient"] += 1
-            patient_id = f"PS{self._counters['patient']:08d}"
+            patient_id = self._patient_id()
             self._emit("PATIENT_REGISTERED", patient_id, {
                 "patient_id": patient_id,
                 "gender": rng.choices(GENDERS, weights=(0.49, 0.49, 0.02))[0],
@@ -160,7 +173,7 @@ class HospitalSimulator:
         _, department, needs_bed = ENCOUNTER_PROFILES[encounter_type]
         department = department or rng.choice(self._wards)
         self._counters["encounter"] += 1
-        encounter_id = f"ES{self._counters['encounter']:09d}"
+        encounter_id = f"ES{self._id_infix}{self._counters['encounter']:09d}"
         encounter = _Encounter(patient_id, encounter_id, encounter_type, department,
                                f"{department}-{encounter_id}-1" if needs_bed else None)
         self._active.append(encounter)
@@ -219,8 +232,14 @@ class HospitalSimulator:
 
     # --- envelopes and defects ------------------------------------------------
 
+    def _patient_id(self) -> str:
+        return f"PS{self._id_infix}{self._counters['patient']:08d}"
+
+    def _uuid(self, rng: random.Random) -> str:
+        return str(uuid.UUID(int=rng.getrandbits(128) ^ self._id_mask, version=4))
+
     def _event_id(self) -> str:
-        return str(uuid.UUID(int=self._rng.getrandbits(128), version=4))
+        return self._uuid(self._rng)
 
     def _emit(self, event_type: str, patient_id: str, payload: dict) -> None:
         event_time = self.clock()
@@ -240,9 +259,9 @@ class HospitalSimulator:
 
     def _invalid_message(self) -> Message:
         kind = self._defects.choice(INVALID_KINDS)
-        patient_id = f"PS{self._counters['patient']:08d}"
+        patient_id = self._patient_id()
         envelope = {
-            "event_id": str(uuid.UUID(int=self._defects.getrandbits(128), version=4)),
+            "event_id": self._uuid(self._defects),
             "event_type": "VITAL_MEASUREMENT", "event_time": iso(self.clock()),
             "source": SOURCE, "version": SCHEMA_VERSION,
             "payload": {"patient_id": patient_id, "heart_rate": 80},

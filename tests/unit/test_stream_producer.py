@@ -3,6 +3,8 @@
 import importlib.util
 import io
 import json
+import sys
+import types
 import unittest
 from collections import Counter, defaultdict
 from contextlib import redirect_stdout
@@ -112,13 +114,50 @@ class EnvelopeTests(unittest.TestCase):
         self.assertEqual(noisy_ids[:2000], clean_ids[:2000])
 
 
+class RunIdTests(unittest.TestCase):
+    def ids(self, run_id):
+        config = SimulatorConfig(seed=7, run_id=run_id, late_event_probability=0,
+                                 duplicate_probability=0, invalid_event_probability=0)
+        events = [decode(m) for m in simulator(config).messages(500)]
+        return ({e["event_id"] for e in events}, {e["payload"]["patient_id"] for e in events},
+                [e["event_type"] for e in events])
+
+    def test_run_ids_namespace_ids_but_keep_content(self):
+        first_events, first_patients, first_types = self.ids("261022100000")
+        second_events, second_patients, second_types = self.ids("261022100500")
+        self.assertFalse(first_events & second_events)
+        self.assertFalse(first_patients & second_patients)
+        self.assertEqual(first_types, second_types)
+        self.assertEqual(self.ids("261022100000")[0], first_events)
+        self.assertTrue(all(p.startswith("PS261022100000-") for p in first_patients))
+
+    def test_invalid_run_id_rejected(self):
+        with self.assertRaises(ValueError):
+            SimulatorConfig(run_id="bad id!")
+
+
+class FakeClock:
+    """Time advances only through sleep(); a loop that never sleeps hits the guard."""
+
+    def __init__(self, max_calls=10000):
+        self.now, self.calls, self.max_calls = 0.0, 0, max_calls
+
+    def monotonic(self):
+        self.calls += 1
+        if self.calls > self.max_calls:
+            raise AssertionError("pacing loop spins without sleeping")
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
 class PacingTests(unittest.TestCase):
     def test_rate_limits_and_counts(self):
-        clock = {"now": 0.0}
+        clock = FakeClock()
         sent = []
         stats = run(simulator(), lambda key, value: sent.append(key), rate=500, duration=2.0,
-                    monotonic=lambda: clock["now"],
-                    sleep=lambda seconds: clock.__setitem__("now", clock["now"] + seconds))
+                    monotonic=clock.monotonic, sleep=clock.sleep)
         self.assertEqual(len(sent), 1000)
         self.assertEqual(sum(stats.values()), len(sent))
 
@@ -129,6 +168,61 @@ class PacingTests(unittest.TestCase):
             monotonic=lambda: clock["now"],
             sleep=lambda seconds: clock.__setitem__("now", clock["now"] + seconds))
         self.assertEqual(len(sent), 123)
+
+    def test_low_rate_does_not_busy_wait(self):
+        clock = {"now": 0.0, "sleeps": 0}
+
+        def sleep(seconds):
+            clock["sleeps"] += 1
+            clock["now"] += seconds
+
+        sent = []
+        run(simulator(), lambda key, value: sent.append(key), rate=5, duration=3.0,
+            monotonic=lambda: clock["now"], sleep=sleep)
+        self.assertEqual(len(sent), 15)
+        self.assertLessEqual(clock["sleeps"], 3.0 / 0.1 + 2)
+
+    def test_keyboard_interrupt_stops_cleanly(self):
+        sent = []
+
+        def send(key, value):
+            if len(sent) == 10:
+                raise KeyboardInterrupt
+            sent.append(key)
+
+        stats = run(simulator(), send, rate=1000, max_events=100)
+        self.assertEqual(sum(stats.values()), 10)
+
+    def test_delivery_failures_make_main_fail(self):
+        class Future:
+            def add_errback(self, callback):
+                callback(RuntimeError("broker down"))
+
+        class FakeProducer:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def send(self, topic, key, value):
+                return Future()
+
+            def flush(self):
+                pass
+
+            def close(self):
+                pass
+
+        fake = types.ModuleType("kafka")
+        fake.KafkaProducer = FakeProducer
+        previous = sys.modules.get("kafka")
+        sys.modules["kafka"] = fake
+        try:
+            code = main(["--bootstrap-servers", "broker:9092", "--max-events", "5", "--rate", "1000"])
+        finally:
+            if previous is None:
+                del sys.modules["kafka"]
+            else:
+                sys.modules["kafka"] = previous
+        self.assertEqual(code, 1)
 
     def test_dry_run_cli_prints_json_lines(self):
         out = io.StringIO()

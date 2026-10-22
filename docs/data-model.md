@@ -181,7 +181,11 @@ JSON envelopes to Kafka (default topic `hospital.events`, key = `patient_id`):
 
 The admission/discharge time is the envelope `event_time` (UTC, wall clock).
 Stream IDs use their own prefixes (`PS…`, `ES…`) so they never collide with the
-batch dataset. Per encounter the order is `ADMISSION` → `BED_ASSIGNED` (non
+batch dataset. Every producer start gets a run ID (UTC start time, e.g.
+`PS261022133000-00000001`); event UUIDs are mixed with it too, so a restarted
+producer never replays earlier IDs that the stream would drop as duplicates or
+treat as re-admissions. `--run-id` reproduces a run exactly (same seed + run ID
+⇒ same messages). Per encounter the order is `ADMISSION` → `BED_ASSIGNED` (non
 outpatient) → clinical events / `TRANSFER` → `DISCHARGE` → `BED_RELEASED`; new
 patients are registered first, and a returning patient is only re-admitted
 after discharge. At most `max_active_encounters` encounters are open.
@@ -200,8 +204,12 @@ make produce KAFKA_BOOTSTRAP_SERVERS=localhost:9092 RATE=1000 DURATION=60
 
 The producer logs one JSON stats line every 10 seconds and at exit
 (`events_sent`, `events_per_second`, `valid/late/duplicate/invalid_events`).
+`events_per_second` is the send rate; buffered records are flushed at exit, so
+end-to-end delivery can finish slightly later. Delivery failures (after the
+client's retries) are counted and make the producer exit with status 1; Ctrl-C
+flushes, logs final stats and exits normally.
 Local measurement, 2026-10-22, against a temporary single-node Kafka 3.9.1
-container (3 partitions) on the same 16-core machine: target 1,000/s → 10,029
-messages consumed, every key on a single partition; target 2,000/s → 20,000 in
+container (3 partitions) on the same 16-core machine: target 1,000/s for 10 s →
+10,000 messages consumed, every key on a single partition; target 2,000/s → 20,000 in
 10.0 s; target 10,000/s → 100,000 in 10.4 s (9,615/s, one Python process).
 These are producer-only numbers, not end-to-end stream throughput.
