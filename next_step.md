@@ -20,7 +20,7 @@
 ```bash
 cp .env.example .env
 make up
-make batch          # generate → bootstrap Bronze → ingest Bronze → Silver → Gold
+make batch          # generate → bootstrap Bronze → ingest Bronze → verify → Silver (+ Gold khi TV4 xong T4.1)
 make query          # các analytical query trên Trino trả về dữ liệu thật
 make test
 ```
@@ -35,8 +35,8 @@ Streaming là điểm cộng: làm song song nhưng **không được làm chậ
 |---|---|
 | W1 — Spark → Iceberg → Trino | ✅ Pass (`make week1-smoke`, `make week1-recovery`, 12/10) |
 | W2 — Parquet → Bronze → verify | ✅ Gate live pass 22/10 (1.000 patients, 6 bảng khớp số dòng + checksum ID) sau khi sửa 2 bug tích hợp — **PR #10 đã merge** |
-| W3 — Bronze → Silver → Gold → SQL | ⚠️ **Đang hở**: framework data-quality (TV3) ✅, Gold job (TV4) ✅; Silver patients/encounters (TV1) ở **PR #12** (đã chạy live); Silver clinical (TV2) chưa có ⇒ Gold chưa chạy được trên dữ liệu thật |
-| W4 — Simulator → Kafka → Streaming → Bronze | ⚠️ Kafka reader + dedup (TV3) ✅, stream Bronze sink + DLQ (TV4) ✅; **thiếu producer (TV1)** và **Kafka local stack (TV2)** |
+| W3 — Bronze → Silver → Gold → SQL | ⚠️ **Đang hở**: framework data-quality (TV3) ✅, Gold job (TV4) ✅, Silver patients/encounters (TV1) ✅ **PR #12 merged**, `make batch` tới Silver (TV1, T1.2); Silver clinical (TV2) và `gold-docker` (TV4) chưa có ⇒ Gold chưa chạy được trên dữ liệu thật |
+| W4 — Simulator → Kafka → Streaming → Bronze | ⚠️ Kafka reader + dedup (TV3) ✅, stream Bronze sink + DLQ (TV4) ✅, producer (TV1) ở **PR #13**; **thiếu Kafka local stack (TV2)** |
 
 Vấn đề phát hiện khi chạy lại test (TV1, 22/10):
 
@@ -73,7 +73,7 @@ Thời hạn chung: **PR mở + audit PASS trước 23:59 thứ Bảy 24/10**. T
 
 | # | Việc | Branch | Acceptance |
 |---|---|---|---|
-| T3.1 | Tài liệu đi kèm (**deliverable code chính của TV3 là T3.2**): `docs/architecture.md` viết lại cho **toàn hệ thống** (hiện chỉ mô tả hạ tầng Week 1): sơ đồ Lambda (batch / speed / serving), bảng component (công nghệ, vai trò, layer, **trạng thái: chạy được / đang làm / kế hoạch**), luồng batch và stream qua từng bảng/topic, mapping thư mục code, kế hoạch K8s (Tuần 6). Chỉ ghi “chạy được” cho thứ đã có lệnh tái lập (`AGENTS.md` §38) | `docs/w4-system-architecture` (đi kèm T3.2 nếu muốn) | TV1 đọc và đối chiếu được từng box trong sơ đồ với file code / lệnh `make` |
+| T3.1 | Tài liệu đi kèm (**deliverable code chính của TV3 là T3.2**; commit chung branch `feat/` của T3.2): `docs/architecture.md` viết lại cho **toàn hệ thống** (hiện chỉ mô tả hạ tầng Week 1): sơ đồ Lambda (batch / speed / serving), bảng component (công nghệ, vai trò, layer, **trạng thái: chạy được / đang làm / kế hoạch**), luồng batch và stream qua từng bảng/topic, mapping thư mục code, kế hoạch K8s (Tuần 6). Chỉ ghi “chạy được” cho thứ đã có lệnh tái lập (`AGENTS.md` §38) | `feat/w4-stream-bronze-compose` (cùng T3.2) | TV1 đọc và đối chiếu được từng box trong sơ đồ với file code / lệnh `make` |
 | T3.2 | Chạy `spark.streaming.kafka_to_bronze` trong Compose: service `stream-bronze` (Spark image có sẵn + Kafka connector), checkpoint trên volume, `make stream-bronze-docker`. Phụ thuộc T2.2; nếu T2.2 chưa xong thì phát triển/test với một container Kafka tạm (KRaft single node) rồi chuyển sang service của TV2 khi merge | `feat/w4-stream-bronze-compose` | Event từ Kafka của TV2 vào `bronze` stream tables; restart service không tạo duplicate (checkpoint) |
 | T3.3 | PR audit bù cho 3 commit đã push thẳng `main` (`dce4ce9..46fdacf`): mở PR “audit-only” hoặc ghi kết quả audit vào PR T3.2 | — | Có bản audit độc lập (model/effort, SHA, verdict) |
 
@@ -81,7 +81,7 @@ Thời hạn chung: **PR mở + audit PASS trước 23:59 thứ Bảy 24/10**. T
 
 | # | Việc | Branch | Acceptance |
 |---|---|---|---|
-| T4.1 | Sửa `test_gold_metrics` để không phụ thuộc múi giờ máy; Gold chạy trong Compose: service `gold` (giống `bronze-ingest`), `make gold-docker`, giá trị mặc định `GOLD_AS_OF` / `GOLD_BED_CAPACITIES` trong `.env.example` (đủ 5 khoa chuẩn) | `feat/w3-gold-compose` | `make test` pass ở `TZ=Asia/Ho_Chi_Minh`; `make gold-docker` ghi 4 bảng Gold từ Silver thật (sau T1.1 + T2.1 lab/bed) |
+| T4.1 | Sửa `test_gold_metrics` để không phụ thuộc múi giờ máy; Gold chạy trong Compose: service `gold` (giống `bronze-ingest`), `make gold-docker`, giá trị mặc định `GOLD_AS_OF` / `GOLD_BED_CAPACITIES` trong `.env.example` (đủ 5 khoa chuẩn); thêm bước `$(MAKE) gold-docker` vào cuối target `batch` | `feat/w3-gold-compose` | `make test` pass ở `TZ=Asia/Ho_Chi_Minh`; `make gold-docker` ghi 4 bảng Gold từ Silver thật (sau T1.1 + T2.1 lab/bed) |
 | T4.2 | `make query`: chạy `sql/trino/queries.sql` qua Trino, fail nếu query trả rỗng/lỗi; bổ sung query trên Silver + Gold (admissions/day, avg LOS theo khoa, abnormal lab rate, ICU utilization, patient history) | `feat/w3-trino-queries` | 5+ query chạy trên dữ liệu thật, in kết quả rõ ràng |
 | T4.3 | `docs/demo-script.md` + `scripts/checkpoint_demo.sh`: kịch bản trình bày checkpoint (lệnh chính xác, output mong đợi) | đi kèm T4.2 | TV1 chạy theo script trên clone mới không phải sửa tay |
 

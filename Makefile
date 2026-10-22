@@ -1,12 +1,14 @@
 PYTHON ?= python3
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then printf 'docker compose'; else printf 'docker-compose'; fi)
 
-.PHONY: produce produce-dry-run batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold stream-bronze-probe stream-bronze
+.PHONY: batch batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold stream-bronze-probe stream-bronze produce produce-dry-run
 .DEFAULT_GOAL := help
 
 help:
 	@printf '%s\n' 'make batch-bronze BATCH_ID=demo-001 [INPUT_DIR=data/generated] [ENTITIES=patients]' 'make test-bronze Run local Spark/Iceberg ingestion checks'
 	@printf '%s\n' 'make batch-bronze-docker BATCH_ID=demo-001  Run ingestion with Compose Spark and a read-only INPUT_DIR mount'
+	@printf '%s\n' 'make batch [PATIENTS=1000 SEED=42]  Full batch path: generate -> bootstrap Bronze -> ingest Bronze -> verify -> Silver (Gold: TV4 T4.1)'
+	@printf '%s\n' 'make batch-silver-docker [SILVER_ENTITIES="patients encounters"]  Rebuild Silver + quarantine from Bronze with Compose Spark (default: all entities)' 'make batch-silver PYTHON=.venv/bin/python  Same job with host PySpark (host-reachable endpoints required)'
 	@printf '%s\n' 'make produce KAFKA_BOOTSTRAP_SERVERS=localhost:9092 [RATE=1000 DURATION=60]  Publish simulated hospital events to Kafka' 'make produce-dry-run [RATE=1000 MAX_EVENTS=20]  Print simulated events as JSON lines (no Kafka)'
 	@printf '%s\n' 'make stream-bronze PYTHON=.venv/bin/python KAFKA_BOOTSTRAP_SERVERS=localhost:9092 CHECKPOINT_LOCATION=$$PWD/checkpoints/stream-bronze'
 	@printf '%s\n' 'make bootstrap-bronze Create/validate six Bronze tables without rewriting data' 'make bronze-smoke PYTHON=.venv/bin/python  Validate Parquet/schema/S3/Trino/reruns in isolated tables'
@@ -121,6 +123,28 @@ batch-bronze:
 batch-bronze-docker:
 	@test -n "$(BATCH_ID)" || (echo 'BATCH_ID is required' >&2; exit 2)
 	BRONZE_INPUT_DIR="$(INPUT_DIR)" $(COMPOSE) run --rm bronze-ingest --input-dir /opt/hospital-input --batch-id "$(BATCH_ID)" --entities $(ENTITIES)
+
+# Empty = every entity registered in spark/batch/bronze_to_silver.py.
+SILVER_ENTITIES ?=
+SILVER_ARGS = $(if $(strip $(SILVER_ENTITIES)),--entities $(SILVER_ENTITIES))
+
+batch-silver:
+	$(PYTHON) -m spark.batch.bronze_to_silver $(SILVER_ARGS)
+
+batch-silver-docker:
+	$(COMPOSE) run --rm silver-transform $(SILVER_ARGS)
+
+# Same PATIENTS/SEED regenerate identical files, so the derived batch ID makes
+# reruns skip committed Bronze tables; changed inputs need a new PIPELINE_BATCH_ID.
+PIPELINE_BATCH_ID ?= synthetic-p$(PATIENTS)-s$(SEED)
+
+# Gold is appended by TV4's gold-docker target (next_step.md T4.1).
+batch:
+	$(MAKE) generate-data OUTPUT_DIR="$(INPUT_DIR)"
+	$(MAKE) bootstrap-bronze
+	$(MAKE) batch-bronze-docker BATCH_ID="$(PIPELINE_BATCH_ID)"
+	$(MAKE) verify-bronze BATCH_ID="$(PIPELINE_BATCH_ID)"
+	$(MAKE) batch-silver-docker
 
 RATE ?= 1000
 DURATION ?= 60

@@ -58,7 +58,7 @@ Root command/config files (Milestone 0, `plan.md` §22):
 |---|---|
 | `requirements-spark.txt` | Optional pinned PySpark 4.0.2 host runtime plus application dependencies; local Spark/Iceberg tests require Java 17+. `batch-bronze-docker` uses the existing Compose Spark image instead. |
 | `requirements.txt`, `pyproject.toml` | Generator dependencies and pytest discovery for both pytest/unittest suites. |
-| `Makefile` | Includes `batch-bronze` and `test-bronze` for ingestion/local integration. Week 2: `bootstrap-bronze`, `bronze-smoke`. Week 1 commands: `minio-up`, `minio-stop`, `bootstrap-bucket`, `test-minio`, `week1-smoke`, `week1-recovery`. `setup` installs dependencies; `generate-data` writes configurable Parquet/CSV; `test` runs both styles with pytest. `verify-generated` checks Parquet source contracts; `validate-generator` repeats 10k/100k generation and records deterministic hashes. Includes `verify-bronze` and `gold` for TV4 batch validation and Gold submission, plus local and Trino targets. |
+| `Makefile` | `batch` runs the batch path end to end (generate → Bronze → verify → Silver; Gold added by TV4); `batch-silver(-docker)` rebuilds Silver. Includes `batch-bronze` and `test-bronze` for ingestion/local integration. Week 2: `bootstrap-bronze`, `bronze-smoke`. Week 1 commands: `minio-up`, `minio-stop`, `bootstrap-bucket`, `test-minio`, `week1-smoke`, `week1-recovery`. `setup` installs dependencies; `generate-data` writes configurable Parquet/CSV; `test` runs both styles with pytest. `verify-generated` checks Parquet source contracts; `validate-generator` repeats 10k/100k generation and records deterministic hashes. Includes `verify-bronze` and `gold` for TV4 batch validation and Gold submission, plus local and Trino targets. |
 | `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; synthetic-data local credentials shared by MinIO/Trino; `MINIO_IMAGE`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`, `ICEBERG_REST_PORT` configure the local storage service. Endpoints use Compose service names. Makefile supports both Compose CLI forms via `COMPOSE`; Trino clients accept the `COMPOSE` override, which Make propagates. Never commit `.env`. |
 | `docker-compose.yml` | MinIO, `minio-init`, Iceberg REST, Trino and optional Spark/Bronze bootstrap/smoke profiles share `hospital-lake`; `minio-data` persists objects, `iceberg-catalog` persists SQLite metadata, `spark-ivy` caches fixture connectors. |
 
@@ -113,15 +113,15 @@ ingestion remains pending. CSV API clean fixtures and CLI raw fixtures share the
 
 | Path | Planned files | Responsibility | TV | Wk |
 |---|---|---|---|---|
-| `common/` | `config.py`, `schemas.py`, `iceberg.py`, `bronze.py`, `data_quality.py` | Implemented env config, shared SparkSession, Bronze DDL loader/validation, and batch validation/quarantine metrics. Processing schemas remain planned. **Reuse, don't duplicate.** | TV3 | 1, 3 |
-| `batch/` | `ingest_bronze.py`, `bronze_to_silver.py`, `silver_to_gold.py`, `main.py` | raw Parquet → Bronze → Silver → Gold. TV4's `silver_to_gold.py` builds four historical Gold tables with a deterministic cutoff and full-table overwrite. | TV3 (Bronze), TV1/TV2 (Silver), TV4 (Gold) | 2–3 |
+| `common/` | `config.py`, `schemas.py`, `iceberg.py`, `bronze.py`, `data_quality.py`, `normalization.py` | Implemented env config, canonical department/encounter values (`normalization.py`), shared SparkSession, Bronze DDL loader/validation, and batch validation/quarantine metrics. Processing schemas remain planned. **Reuse, don't duplicate.** | TV3 | 1, 3 |
+| `batch/` | `ingest_bronze.py`, `bronze_to_silver.py`, `silver_to_gold.py`, `main.py` | raw Parquet → Bronze → Silver → Gold. TV1's `bronze_to_silver.py` rebuilds Silver from all Bronze rows with an entity registry (patients, encounters; TV2 appends clinical entities) plus `silver.quarantine`; `make batch-silver-docker`. TV4's `silver_to_gold.py` builds four historical Gold tables with a deterministic cutoff and full-table overwrite. | TV3 (Bronze), TV1/TV2 (Silver), TV4 (Gold) | 2–3 |
 | `streaming/` | `kafka_reader.py`, `kafka_to_bronze.py`, `bronze_sink.py`, `realtime_aggregates.py`, `main.py` | `kafka_to_bronze.py` wires the envelope reader to TV4's idempotent raw-byte Bronze/quarantine sink. `kafka_reader.py` retains bad events for quarantine and provides valid-only event-time dedup with a watermark for downstream consumers. | TV3, TV4 (sink/quarantine), TV1/TV2 (aggregates) | 4–5 |
 
 ### 3.5 `sql/` — Lakehouse DDL + Serving queries
 
 | Path | Planned files | Responsibility | TV | Wk |
 |---|---|---|---|---|
-| `iceberg/` | `create_bronze_tables.sql`, `create_stream_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | TV2 six Bronze definitions; TV4 two stream Bronze/quarantine and four Gold definitions. Silver DDL pending | TV2/TV4 | 2–4 |
+| `iceberg/` | `create_bronze_tables.sql`, `create_stream_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | TV2 six Bronze definitions; TV4 two stream Bronze/quarantine and four Gold definitions; TV1 Silver patients/encounters/quarantine (TV2 adds clinical tables) | TV2/TV4 | 2–4 |
 | `trino/` | `verify_bronze.sql`, `queries.sql` | Bronze ID checks and five historical Gold queries | TV4 | 1–3 |
 | `clickhouse/` | `schema.sql`, `views.sql` | Realtime serving tables: `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | TV3/TV4 | 5 |
 
