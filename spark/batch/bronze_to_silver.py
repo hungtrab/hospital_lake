@@ -18,6 +18,10 @@ Adding an entity (e.g. lab_results): write ``prepare``/``rules``/``output``
 functions, append a ``SilverEntity`` to ``ENTITIES`` after its dependencies,
 and add its DDL to ``sql/iceberg/create_silver_tables.sql``. ``prepare``
 receives already-built Silver frames for ``depends_on`` entities.
+
+``--entities`` limits a run to some entities but does not rebuild their
+dependents: after rebuilding ``patients`` alone, ``encounters`` still reflects
+the previous patient set. Run all entities (the default) after upstream changes.
 """
 
 from __future__ import annotations
@@ -199,6 +203,7 @@ def transform_entity(entity: SilverEntity, bronze, silver: Mapping[str, object],
     metrics = result.metrics
     report = {
         "job": "bronze_to_silver", "entity": entity.name,
+        "run_id": processed_at.astimezone(timezone.utc).isoformat(),
         "bronze_rows": bronze_rows,
         "exact_duplicate_rows": bronze_rows - distinct_rows,
         "input_rows": metrics.input_rows,

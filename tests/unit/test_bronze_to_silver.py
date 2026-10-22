@@ -81,6 +81,9 @@ class BronzeToSilverTests(unittest.TestCase):
             ("E6", "P2", "inpatient", "SURGERY", ts("2026-01-05T08:00:00"), None, "discharged", *meta()),
             ("E7", "P2", "outpatient", "IM", ts("2026-01-07T08:00:00"), ts("2026-01-07T09:00:00"), "discharged", *meta()),
             ("E7", "P2", "outpatient", "IM", ts("2026-01-07T08:00:00"), ts("2026-01-07T10:00:00"), "discharged", *meta()),
+            ("E8", "P2", "telehealth", "SURGERY", ts("2026-01-08T08:00:00"), None, "admitted", *meta()),
+            ("E9", "P2", "inpatient", "SURGERY", ts("2026-01-08T08:00:00"), None, "pending", *meta()),
+            ("E10", "P2", "inpatient", "SURGERY", None, None, "admitted", *meta()),
         ]
         return self.spark.createDataFrame(rows, ENCOUNTERS_DDL)
 
@@ -133,8 +136,12 @@ class BronzeToSilverTests(unittest.TestCase):
             "E5": ["UNKNOWN_DEPARTMENT"],
             "E6": ["STATUS_DISCHARGE_MISMATCH"],
             "E7": ["DUPLICATE_KEY"],
+            "E8": ["INVALID_ENCOUNTER_TYPE"],
+            "E9": ["INVALID_STATUS", "STATUS_DISCHARGE_MISMATCH"],
+            "E10": ["MISSING_ADMISSION_TIME"],
         })
-        self.assertEqual(result.report["quarantine_rows"], 6)
+        self.assertEqual(result.report["quarantine_rows"], 9)
+        self.assertEqual(result.report["run_id"], "2026-10-22T12:00:00+00:00")
         raw = next(row.raw_record for row in result.quarantine.collect() if row.record_key == "E5")
         self.assertIn('"department":"Oncology"', raw)
         self.assertNotIn("_chk_", raw)
