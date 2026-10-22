@@ -155,3 +155,56 @@ isolated namespace, including duplicates, invalid raw vital values, full Spark
 row equality, Trino ID checksums, MinIO metadata existence, safe bootstrap rerun
 and refusal of incompatible tables. It is a fixture check, not the production
 Week 2 batch gate. Canonical tables stay available for TV3/TV4 after the check.
+
+## Week 3 Silver: patients and encounters (TV1)
+
+`spark/batch/bronze_to_silver.py` rebuilds Silver from **all** Bronze rows on
+every run (Iceberg overwrite), so reruns and re-ingested Bronze batches give the
+same Silver rows. DDL lives in `sql/iceberg/create_silver_tables.sql` and is
+applied by the job itself (`CREATE ... IF NOT EXISTS`).
+
+| Table | Key | Columns | Partition |
+|---|---|---|---|
+| `silver.patients` | `patient_id` | `gender` (`M/F/O`), `birth_year`, `city` (trimmed, empty → null), `created_at` | none |
+| `silver.encounters` | `encounter_id` | `patient_id`, `encounter_type` (lower case), `department` (canonical), `admission_time`, `discharge_time` (null = still admitted), `status` (lower case), `length_of_stay_hours` (null when open) | `months(admission_time)` |
+| `silver.quarantine` | — | `entity`, `record_key`, `reason_codes`, `raw_record` (JSON of source columns), `_bronze_batch_id`, `_processed_at` | `entity` |
+
+Every Silver table also has `_bronze_batch_id` (earliest Bronze batch holding
+the record) and `_processed_at` (run time). Monthly encounter partitions keep
+the ~20-month demo history at ~20 files instead of hundreds of daily files.
+
+Processing order per entity:
+
+1. Exact duplicates (all source columns equal, Bronze metadata ignored) collapse
+   to one row. This absorbs the generator's injected duplicates and the same
+   file ingested under two batch IDs.
+2. Values are normalized: department spellings map to the five canonical names
+   through `spark/common/normalization.py` (`ER`, `ED`, `Emergency Department`
+   → `EMERGENCY`; `Cardio` → `CARDIOLOGY`; ...).
+3. `spark/common/data_quality.py` applies required columns and rules. Rows that
+   share a key but differ in value are all quarantined (`DUPLICATE_KEY`).
+
+| Entity | Reason codes (besides `MISSING_<COLUMN>` and `DUPLICATE_KEY`) |
+|---|---|
+| patients | `INVALID_GENDER`, `IMPLAUSIBLE_BIRTH_YEAR` (outside 1900..registration year) |
+| encounters | `UNKNOWN_PATIENT` (not in valid `silver.patients`), `UNKNOWN_DEPARTMENT`, `INVALID_ENCOUNTER_TYPE`, `INVALID_STATUS`, `DISCHARGE_BEFORE_ADMISSION`, `STATUS_DISCHARGE_MISMATCH` |
+
+Child entities (labs, medications, vitals, bed events) must check their
+`encounter_id` against valid `silver.encounters`: an encounter quarantined here
+makes its children unknown as well.
+
+```bash
+make batch-silver-docker                       # Compose Spark, all registered entities
+make batch-silver-docker SILVER_ENTITIES=patients
+```
+
+Each entity logs one JSON line: `bronze_rows`, `exact_duplicate_rows`,
+`input_rows`, `invalid_rows`, `duplicate_key_rows`, `output_rows`,
+`quarantine_rows`, `duration_seconds`.
+
+Live run on 2026-10-22 (1,000 patients, seed 42, Bronze batch `checkpoint-001`):
+patients 1,000 → 1,000; encounters 3,094 Bronze rows → 31 exact duplicates
+collapsed (manifest: 31 injected) → 3,058 Silver rows + 5 quarantined
+`DISCHARGE_BEFORE_ADMISSION` (manifest: 5 injected). All 140 injected
+department aliases resolved to canonical names. A second run produced identical
+counts.

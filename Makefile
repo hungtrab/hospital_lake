@@ -1,12 +1,13 @@
 PYTHON ?= python3
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then printf 'docker compose'; else printf 'docker-compose'; fi)
 
-.PHONY: batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold stream-bronze-probe stream-bronze
+.PHONY: batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold stream-bronze-probe stream-bronze
 .DEFAULT_GOAL := help
 
 help:
 	@printf '%s\n' 'make batch-bronze BATCH_ID=demo-001 [INPUT_DIR=data/generated] [ENTITIES=patients]' 'make test-bronze Run local Spark/Iceberg ingestion checks'
 	@printf '%s\n' 'make batch-bronze-docker BATCH_ID=demo-001  Run ingestion with Compose Spark and a read-only INPUT_DIR mount'
+	@printf '%s\n' 'make batch-silver-docker [SILVER_ENTITIES="patients encounters"]  Rebuild Silver + quarantine from Bronze with Compose Spark' 'make batch-silver PYTHON=.venv/bin/python  Same job with host PySpark (host-reachable endpoints required)'
 	@printf '%s\n' 'make stream-bronze PYTHON=.venv/bin/python KAFKA_BOOTSTRAP_SERVERS=localhost:9092 CHECKPOINT_LOCATION=$$PWD/checkpoints/stream-bronze'
 	@printf '%s\n' 'make bootstrap-bronze Create/validate six Bronze tables without rewriting data' 'make bronze-smoke PYTHON=.venv/bin/python  Validate Parquet/schema/S3/Trino/reruns in isolated tables'
 	@printf '%s\n' 'make minio-up    Build/start MinIO and bootstrap warehouse bucket' 'make minio-stop  Stop MinIO while preserving data' 'make bootstrap-bucket  Rerun bucket bootstrap safely' 'make test-minio  Verify S3 object persistence after recreating MinIO' 'make week1-smoke Verify Spark → Iceberg → Trino' 'make week1-recovery Verify the same fixture after recreating storage/catalog containers'
@@ -120,6 +121,14 @@ batch-bronze:
 batch-bronze-docker:
 	@test -n "$(BATCH_ID)" || (echo 'BATCH_ID is required' >&2; exit 2)
 	BRONZE_INPUT_DIR="$(INPUT_DIR)" $(COMPOSE) run --rm bronze-ingest --input-dir /opt/hospital-input --batch-id "$(BATCH_ID)" --entities $(ENTITIES)
+
+SILVER_ENTITIES ?= patients encounters
+
+batch-silver:
+	$(PYTHON) -m spark.batch.bronze_to_silver --entities $(SILVER_ENTITIES)
+
+batch-silver-docker:
+	$(COMPOSE) run --rm silver-transform --entities $(SILVER_ENTITIES)
 
 test-bronze:
 	RUN_BRONZE_TESTS=1 $(PYTHON) -m unittest discover -s tests/integration -p test_bronze_ingestion.py -v
