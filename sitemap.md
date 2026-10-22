@@ -112,7 +112,7 @@ ingestion remains pending. CSV API clean fixtures and CLI raw fixtures share the
 
 | Path | Planned files | Responsibility | TV | Wk |
 |---|---|---|---|---|
-| `common/` | `config.py`, `schemas.py`, `iceberg.py`, `bronze.py` | Implemented env config, shared SparkSession and Bronze DDL loader/validation. Shared processing schemas/data-quality helpers remain planned. **Reuse, don't duplicate.** | TV3 | 1, 3 |
+| `common/` | `config.py`, `schemas.py`, `iceberg.py`, `bronze.py`, `data_quality.py` | Implemented env config, shared SparkSession, Bronze DDL loader/validation, and batch validation/quarantine metrics. Processing schemas remain planned. **Reuse, don't duplicate.** | TV3 | 1, 3 |
 | `batch/` | `ingest_bronze.py`, `bronze_to_silver.py`, `silver_to_gold.py`, `main.py` | raw Parquet → Bronze → Silver → Gold. TV4's `silver_to_gold.py` builds four historical Gold tables with a deterministic cutoff and full-table overwrite. | TV3 (Bronze), TV1/TV2 (Silver), TV4 (Gold) | 2–3 |
 | `streaming/` | `kafka_to_bronze.py`, `bronze_sink.py`, `realtime_aggregates.py`, `main.py` | TV4's sink writes valid Kafka bytes and invalid events to Bronze/quarantine by offset; reader, dedup, watermark and aggregates remain separate. | TV3, TV4 (sink/quarantine), TV1/TV2 (aggregates) | 4–5 |
 
