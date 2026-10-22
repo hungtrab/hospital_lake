@@ -198,7 +198,10 @@ make batch-silver-docker                       # Compose Spark, all registered e
 make batch-silver-docker SILVER_ENTITIES=patients
 ```
 
-Each entity logs one JSON line: `bronze_rows`, `exact_duplicate_rows`,
+`--entities` (or `SILVER_ENTITIES`) limits a run but does not rebuild
+dependents; run all entities (the default) after upstream changes.
+
+Each entity logs one JSON line: `run_id`, `bronze_rows`, `exact_duplicate_rows`,
 `input_rows`, `invalid_rows`, `duplicate_key_rows`, `output_rows`,
 `quarantine_rows`, `duration_seconds`.
 
@@ -208,3 +211,22 @@ collapsed (manifest: 31 injected) → 3,058 Silver rows + 5 quarantined
 `DISCHARGE_BEFORE_ADMISSION` (manifest: 5 injected). All 140 injected
 department aliases resolved to canonical names. A second run produced identical
 counts.
+
+### One-command batch path
+
+```bash
+make batch PYTHON=.venv/bin/python [PATIENTS=1000 SEED=42]
+```
+
+runs `generate-data` → `bootstrap-bronze` → `batch-bronze-docker` →
+`verify-bronze` → `batch-silver-docker` and stops at the first failing step.
+The Bronze batch ID defaults to `synthetic-p<PATIENTS>-s<SEED>`; the same
+inputs regenerate identical files, so a rerun skips already committed Bronze
+tables. Gold joins this target with TV4's `gold-docker` (next_step.md T4.1).
+
+Live, 2026-10-22: the stack already held the same dataset as Bronze batch
+`checkpoint-001`; `make batch` added it again as `synthetic-p1000-s42` (Bronze
+now 2,000 patient and 6,188 encounter rows). Silver still produced 1,000
+patients and 3,058 encounters with 5 quarantined rows: 1,000 and 3,125 exact
+duplicates collapsed. A second `make batch` reported `skipped` for all six
+Bronze tables and the same Silver counts.
