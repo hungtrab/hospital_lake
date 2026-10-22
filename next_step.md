@@ -34,8 +34,8 @@ Streaming là điểm cộng: làm song song nhưng **không được làm chậ
 | Tuần / gate | Trạng thái |
 |---|---|
 | W1 — Spark → Iceberg → Trino | ✅ Pass (`make week1-smoke`, `make week1-recovery`, 12/10) |
-| W2 — Parquet → Bronze → verify | ✅ Gate live pass 22/10 (1.000 patients, 6 bảng khớp số dòng + checksum ID) **sau khi sửa 2 bug tích hợp ở PR #10** |
-| W3 — Bronze → Silver → Gold → SQL | ⚠️ **Đang hở**: framework data-quality (TV3) ✅, Gold job (TV4) ✅ nhưng **chưa có Silver** (TV1 + TV2) nên Gold chưa chạy được trên dữ liệu thật |
+| W2 — Parquet → Bronze → verify | ✅ Gate live pass 22/10 (1.000 patients, 6 bảng khớp số dòng + checksum ID) sau khi sửa 2 bug tích hợp — **PR #10 đã merge** |
+| W3 — Bronze → Silver → Gold → SQL | ⚠️ **Đang hở**: framework data-quality (TV3) ✅, Gold job (TV4) ✅; Silver patients/encounters (TV1) ở **PR #12** (đã chạy live); Silver clinical (TV2) chưa có ⇒ Gold chưa chạy được trên dữ liệu thật |
 | W4 — Simulator → Kafka → Streaming → Bronze | ⚠️ Kafka reader + dedup (TV3) ✅, stream Bronze sink + DLQ (TV4) ✅; **thiếu producer (TV1)** và **Kafka local stack (TV2)** |
 
 Vấn đề phát hiện khi chạy lại test (TV1, 22/10):
@@ -43,7 +43,7 @@ Vấn đề phát hiện khi chạy lại test (TV1, 22/10):
 - **`make batch-bronze-docker` hỏng trên `main`** (đã sửa ở PR #10):
   1. Image `apache/spark:3.5.5-python3` chạy **Python 3.8** → annotation `list[dict]` crash lúc import. Mọi module chạy trong container Spark phải có `from __future__ import annotations` (đã có unit test chặn).
   2. Ghi bảng partition theo ngày bằng fanout writer → OOM driver 512 MiB. Ghi Iceberg dùng `.option("fanout-enabled", "false")`.
-- `make test` pass 93/93 khi `TZ=UTC`, nhưng `tests/unit/test_gold_metrics.py::test_hourly_and_icu_metrics` **fail trên máy múi giờ +07** (Spark trả timestamp theo giờ local khi `collect()`). → TV4 sửa (T4.1).
+- `pytest tests/unit` pass 93/93 và `make test` (unit + integration) 106 passed / 10 skipped khi `TZ=UTC`, nhưng `tests/unit/test_gold_metrics.py::test_hourly_and_icu_metrics` **fail trên máy múi giờ +07** (Spark trả timestamp theo giờ local khi `collect()`). → TV4 sửa (T4.1).
 - Máy có `JAVA_HOME` trỏ Java 8 hoặc worker Python khác driver sẽ làm test Spark lỗi. Khi chạy local: `JAVA_HOME=<java 17+>`, `PYSPARK_PYTHON=.venv/bin/python`.
 - 3 commit của TV3 (`dce4ce9`, `8f1e538`, `46fdacf`) được push **thẳng lên `main`**, không qua PR/audit. Từ giờ **mọi thay đổi đi qua PR** (mục 5).
 
@@ -51,7 +51,7 @@ Vấn đề phát hiện khi chạy lại test (TV1, 22/10):
 
 ## 3. Giao việc
 
-Thời hạn chung: **PR mở + audit PASS trước 23:59 thứ Bảy 24/10**. Chủ nhật 25/10 dành cho merge + chạy rehearsal. Thứ tự ưu tiên trong mỗi TV: làm từ trên xuống.
+Thời hạn chung: **PR mở + audit PASS trước 23:59 thứ Bảy 24/10**. TV1 merge **ngay khi** PR có audit PASS và các PR phụ thuộc đã vào `main` (xem mục 4); Chủ nhật 25/10 dành cho những merge cuối + chạy rehearsal. Thứ tự ưu tiên trong mỗi TV: làm từ trên xuống.
 
 ### TV1 — hungtrab (Silver patients/encounters + orchestration)
 
@@ -73,8 +73,8 @@ Thời hạn chung: **PR mở + audit PASS trước 23:59 thứ Bảy 24/10**. C
 
 | # | Việc | Branch | Acceptance |
 |---|---|---|---|
-| T3.1 | `docs/architecture.md` viết lại cho **toàn hệ thống** (hiện chỉ mô tả hạ tầng Week 1): sơ đồ Lambda (batch / speed / serving), bảng component (công nghệ, vai trò, layer, **trạng thái: chạy được / đang làm / kế hoạch**), luồng batch và stream qua từng bảng/topic, mapping thư mục code, kế hoạch K8s (Tuần 6). Chỉ ghi “chạy được” cho thứ đã có lệnh tái lập (`AGENTS.md` §38) | `docs/w4-system-architecture` (đi kèm T3.2 nếu muốn) | TV1 đọc và đối chiếu được từng box trong sơ đồ với file code / lệnh `make` |
-| T3.2 | Chạy `spark.streaming.kafka_to_bronze` trong Compose: service `stream-bronze` (Spark image có sẵn + Kafka connector), checkpoint trên volume, `make stream-bronze-docker`. Phụ thuộc T2.2 | `feat/w4-stream-bronze-compose` | Event từ Kafka của TV2 vào `bronze` stream tables; restart service không tạo duplicate (checkpoint) |
+| T3.1 (chính) | Xem T3.2 bên dưới — **T3.2 là deliverable code chính của TV3**; T3.1 là tài liệu đi kèm. `docs/architecture.md` viết lại cho **toàn hệ thống** (hiện chỉ mô tả hạ tầng Week 1): sơ đồ Lambda (batch / speed / serving), bảng component (công nghệ, vai trò, layer, **trạng thái: chạy được / đang làm / kế hoạch**), luồng batch và stream qua từng bảng/topic, mapping thư mục code, kế hoạch K8s (Tuần 6). Chỉ ghi “chạy được” cho thứ đã có lệnh tái lập (`AGENTS.md` §38) | `docs/w4-system-architecture` (đi kèm T3.2 nếu muốn) | TV1 đọc và đối chiếu được từng box trong sơ đồ với file code / lệnh `make` |
+| T3.2 | Chạy `spark.streaming.kafka_to_bronze` trong Compose: service `stream-bronze` (Spark image có sẵn + Kafka connector), checkpoint trên volume, `make stream-bronze-docker`. Phụ thuộc T2.2; nếu T2.2 chưa xong thì phát triển/test với một container Kafka tạm (KRaft single node) rồi chuyển sang service của TV2 khi merge | `feat/w4-stream-bronze-compose` | Event từ Kafka của TV2 vào `bronze` stream tables; restart service không tạo duplicate (checkpoint) |
 | T3.3 | PR audit bù cho 3 commit đã push thẳng `main` (`dce4ce9..46fdacf`): mở PR “audit-only” hoặc ghi kết quả audit vào PR T3.2 | — | Có bản audit độc lập (model/effort, SHA, verdict) |
 
 ### TV4 — frichickens (Gold chạy thật + query + demo)
@@ -90,7 +90,7 @@ Thời hạn chung: **PR mở + audit PASS trước 23:59 thứ Bảy 24/10**. C
 ## 4. Lịch & phụ thuộc
 
 ```text
-Thu 22/10   TV1: T1.1 Silver framework + patients/encounters → PR → audit → merge (tối)
+Thu 22/10   TV1: PR #10 (fix Bronze) ✅ merged; T1.1 Silver framework + patients/encounters (PR #12) → audit → merge (tối)
             TV2: T2.2 Kafka local     TV3: T3.1 architecture draft     TV4: T4.1 fix TZ test + gold service
 Fri 23/10   TV2: T2.1 (dựa trên T1.1)   TV4: T4.2 queries   TV3: T3.2 (khi T2.2 xong)   TV1: T1.2 make batch
 Sat 24/10   23:59 — mọi PR mở + audit PASS.   TV1: T1.3 producer nếu batch đã ổn
@@ -98,13 +98,16 @@ Sun 25/10   TV1 merge theo thứ tự phụ thuộc → rehearsal trên clone m�
 Mon 26/10   Checkpoint
 ```
 
-Phụ thuộc chính:
+Phụ thuộc chính (thứ tự merge):
 
 ```text
+PR #10 fix Bronze (✅) ──► T1.1 (PR #12) ──► …
 T1.1 Silver patients/encounters ──► T2.1 Silver clinical ──► T4.1 Gold trên dữ liệu thật ──► T4.2 make query
                                   └──────────────────────────► T1.2 make batch ◄── T4.1 gold-docker
 T2.2 Kafka local ──► T3.2 stream-bronze-docker ──► T1.3 producer (live test)
 ```
+
+Week 4 gate đầy đủ (1000 events/s chạy 10 phút) **hoãn sang sau checkpoint**; checkpoint chỉ cần luồng stream chạy được (điểm cộng).
 
 Nếu T2.1 trễ: T4 vẫn test Gold bằng fixture; TV1 sẽ nhận phần `bed_events` để không chặn Gold (`AGENTS.md` §7 — task bị block).
 
@@ -112,9 +115,9 @@ Nếu T2.1 trễ: T4 vẫn test Gold bằng fixture; TV1 sẽ nhận phần `bed
 
 ## 5. Luật làm việc cho sprint này
 
-1. **Không push thẳng `main`.** Mỗi task = 1 branch `feat|infra|fix|docs/w<tuần>-<tên>` + 1 PR theo template `AGENTS.md` §32.
+1. **Không push thẳng `main`.** Mỗi task = 1 branch `feat|infra|fix|bench/w<tuần>-<tên>` (`works.md` §6; riêng PR chỉ có tài liệu điều phối dùng `docs/…`) + 1 PR theo template `AGENTS.md` §32.
 2. **Audit độc lập bắt buộc** (`AGENTS.md` §33): agent của mỗi TV spawn auditor riêng, ghi model/effort, base/head SHA, verdict, các check đã chạy vào PR.
-3. **Quyết định merge cuối cùng thuộc TV1 (hungtrab) trong sprint checkpoint.** Audit PASS ⇒ PR sẵn sàng merge, nhưng **không tự merge**; TV1 merge theo thứ tự phụ thuộc ở mục 4 sau khi chạy lại test trên `main` mới nhất. (Ngoại lệ tạm thời cho bước 5 của `AGENTS.md` §33, chỉ áp dụng đến hết 26/10.)
+3. **Quyết định merge cuối cùng thuộc TV1 (hungtrab) trong sprint checkpoint.** Audit PASS ⇒ PR sẵn sàng merge, nhưng **không tự merge**; TV1 merge theo thứ tự phụ thuộc ở mục 4 sau khi chạy lại test trên `main` mới nhất. (Ngoại lệ tạm thời cho bước 5 của `AGENTS.md` §33 và mục Review của `works.md` §6 — quyết định của thành viên TV1 cho sprint này, chỉ áp dụng đến hết 26/10; không tạo quan hệ owner lâu dài. Thành viên nào phản đối thì nêu trong PR này.)
 4. Commit đứng tên **người thật** trong `git config` — không AI identity, không `Co-Authored-By` AI (`AGENTS.md` §31).
 5. Chạy test local với `TZ=UTC` *và* một lần với `TZ=Asia/Ho_Chi_Minh`; `JAVA_HOME` Java 17+; `PYSPARK_PYTHON=.venv/bin/python`.
 6. Port mặc định (9000/9001/8080) trùng thì đổi trong `.env` (`MINIO_API_PORT`, `MINIO_CONSOLE_PORT`, `TRINO_PORT`) — không sửa `docker-compose.yml`.
@@ -134,6 +137,8 @@ Silver = **tính lại toàn bộ từ Bronze** mỗi lần chạy (overwrite) �
 | `silver.quarantine` | — | `entity`, `record_key`, `reason_codes` (array), `raw_record` (JSON), `_bronze_batch_id`, `_processed_at`; partition theo `entity` |
 
 Mọi bảng Silver có thêm 2 cột lineage: `_bronze_batch_id`, `_processed_at`. Timestamp là `TIMESTAMP_LTZ`, session UTC.
+
+Department không nhận ra được (không thuộc 5 tên chuẩn hoặc alias đã biết) ⇒ quarantine `UNKNOWN_DEPARTMENT`, không bao giờ đi vào Silver/Gold.
 
 Xử lý trùng lặp: bản ghi **giống hệt nhau** (kể cả do ingest lại cùng file) được gộp lại 1 và đếm vào `exact_duplicate_rows`; bản ghi **cùng khóa nhưng khác giá trị** đều vào quarantine `DUPLICATE_KEY` (không tự chọn winner — theo `data_quality.py`).
 
