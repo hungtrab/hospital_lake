@@ -110,6 +110,20 @@ class DataQualityTests(unittest.TestCase):
                 job_name="invalid_contract",
             )
 
+    def test_invalid_variant_does_not_publish_a_valid_duplicate_winner(self):
+        from pyspark.sql import functions as F
+        from spark.common.data_quality import assess_dataframe
+
+        frame = self.spark.createDataFrame([("same", 4), ("same", -1)], "id STRING, value INT")
+        result = assess_dataframe(frame, required_columns=("id",),
+                                  rules={"VALUE_POSITIVE": F.col("value") > 0},
+                                  duplicate_keys=("id",), job_name="mixed-conflict")
+        self.assertEqual(result.valid_rows.count(), 0)
+        self.assertEqual((result.metrics.input_rows, result.metrics.invalid_rows,
+                          result.metrics.duplicate_rows, result.metrics.valid_rows), (2, 1, 1, 0))
+        reasons = {row.value: set(row._quality_reason_codes) for row in result.quarantine_rows.collect()}
+        self.assertEqual(reasons, {4: {"DUPLICATE_KEY"}, -1: {"VALUE_POSITIVE", "DUPLICATE_KEY"}})
+
 
 if __name__ == "__main__":
     unittest.main()
