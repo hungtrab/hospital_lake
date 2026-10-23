@@ -288,3 +288,97 @@ container (3 partitions) on the same 16-core machine: target 1,000/s for 10 s �
 10,000 messages consumed, every key on a single partition; target 2,000/s → 20,000 in
 10.0 s; target 10,000/s → 100,000 in 10.4 s (9,615/s, one Python process).
 These are producer-only numbers, not end-to-end stream throughput.
+
+## Week 3 clinical Silver (TV2, T2.1)
+
+The existing entity registry now rebuilds `lab_results`, `bed_events`,
+`medications`, and `vitals` after `encounters`. The default
+`make batch-silver-docker` (also called by `make batch`) processes all six
+entities. To rebuild only clinical tables against already rebuilt encounters:
+
+```bash
+make batch-silver-docker SILVER_ENTITIES="lab_results bed_events medications vitals"
+```
+
+Each clinical table keeps its Bronze domain columns/types plus
+`_bronze_batch_id` and `_processed_at`. Labs recompute `is_abnormal`:
+values strictly below/above the reference interval are abnormal; endpoints
+are normal. The source flag is ignored. Missing/nonfinite values or reversed
+reference bounds are quarantined. Reference intervals and units remain those
+of the source test; no cross-test unit conversion is inferred.
+
+All four check `encounter_id` against **valid Silver encounters**, not Bronze.
+Children of rejected encounters receive `UNKNOWN_ENCOUNTER`. A known encounter
+with a different patient receives `ENCOUNTER_PATIENT_MISMATCH`. Required IDs,
+names/times and entity-specific fields are checked; raw rejected values remain
+in `silver.quarantine` with reasons. Exact duplicates collapse and conflicting
+duplicate keys quarantine (including invalid variants) using the existing shared framework.
+
+| Entity | Additional rules / normalization |
+|---|---|
+| `lab_results` | `INVALID_LAB_VALUE`, `INVALID_REFERENCE_RANGE`; recomputed boolean is directly consumed by Gold |
+| `bed_events` | Canonical department aliases; unknown departments → `UNKNOWN_DEPARTMENT`; event type trimmed/lowercase, only `assigned/transferred/released` (`INVALID_BED_EVENT_TYPE`) |
+| `medications` | Finite positive dose (`INVALID_DOSE`); optional end time >= start (`END_BEFORE_START`); trim drug/unit, lowercase route; dose units retain case (`mL`) |
+| `vitals` | Positive heart rate; finite SpO2 in [0,100]; positive BP with systolic >= diastolic; finite temperature in [25,45] Celsius. Failures receive `INVALID_HEART_RATE`, `INVALID_SPO2`, `INVALID_BLOOD_PRESSURE`, `INVALID_TEMPERATURE` respectively. Missing measurements fail these rules. |
+
+Temperature bounds are broad synthetic-data validation bounds, not medical
+recommendations. Source units are bpm, percent, mmHg and Celsius; values are
+not rescaled. Bronze source types already enforce typed UTC timestamps.
+
+Clinical tables use monthly hidden partitions on `measured_at` (labs/vitals),
+`event_time` (beds), and `start_time` (medications), following the existing Silver
+encounter choice. This deliberately coarsens the starting day/hour suggestions
+in `plan.md`: sparse development data spans ~20 months. Live file/partition
+counts should be measured before changing this strategy for larger workloads.
+Full recomputation replaces data; it does not migrate existing table schemas.
+
+Key conflicts are detected before excluding invalid rows: both variants receive
+`DUPLICATE_KEY`, with invalid variants retaining their specific reasons. Metrics
+remain disjoint: `invalid_rows` includes invalid conflicting rows, while
+`duplicate_key_rows` counts the remaining otherwise-valid conflicting rows.
+
+### Clinical validation evidence (local, 2026-10-24)
+
+Dataset: 1,000 synthetic patients, seed 42, batch
+`tv2-clinical-check-20261024`. The local `make batch` path passed generation,
+Bronze bootstrap/ingestion/Trino ID checks and all six Silver transforms using
+existing pinned Week 1 Docker images (validation-only Compose override of
+`pull_policy` to `never`; no infrastructure source changes). This is local
+integration evidence, not certification of a fresh-clone checkpoint deploy.
+
+| Clinical entity | Bronze rows | Exact duplicates collapsed | Silver rows | Quarantined |
+|---|---:|---:|---:|---:|
+| lab_results | 12,839 | 108 | 12,719 | 12 |
+| bed_events | 3,938 | 0 | 3,934 | 4 |
+| medications | 6,149 | 0 | 6,139 | 10 |
+| vitals | 9,261 | 0 | 9,248 | 13 |
+
+All 39 rejected clinical rows reference one of the five rejected encounters
+(`UNKNOWN_ENCOUNTER`), demonstrating parent-quarantine propagation. Independent
+Trino checks found no duplicate IDs, broken FK/patient pairs, wrong lab flags,
+invalid bed enums/departments, medication dose/time errors or invalid vital
+values in Silver. Boundary, missing and nonfinite-value cases are additionally
+covered by `tests/unit/test_silver_clinical.py`.
+
+All four tables had 20 current files and 20 monthly partitions. Mean file bytes:
+lab_results 16,224.9; bed_events 7,110.5; medications 10,471.45; vitals 12,518.85.
+These are tiny demonstration files, not a performance benchmark or a target
+file-size guarantee. Larger scales need new measurements before repartitioning.
+
+A read-only run of the existing Gold builder consumed actual Silver inputs and
+matched 2,864 abnormal labs and 268 bed transfers in hourly metrics; daily lab
+totals matched all 12,719 Silver labs at cutoff `2026-10-24T00:00:00Z`.
+It did not exercise Gold table writes or certify `make query`.
+
+Full regression with Java 21 / pinned host PySpark 4.0.2: UTC **139 passed,
+10 skipped, 81 subtests**. At `TZ=Asia/Ho_Chi_Minh`: **138 passed, 10 skipped,
+81 subtests**, with the one previously documented TV4 Gold hourly timestamp
+failure (`test_gold_metrics.py::test_hourly_and_icu_metrics`, `next_step.md` T4.1).
+All new clinical/shared-quality regressions passed in both timezones. The skipped
+checks are opt-in live integration tests; the relevant REST/S3/Trino path was
+exercised separately above with Compose Spark 3.5 / Python 3.8.
+
+A second clinical rebuild retained identical counts and order-insensitive
+Trino full-row checksums for all six Silver tables and the complete quarantine
+table, excluding only `_processed_at`. Each clinical quarantine partition was
+replaced without accumulating rows or changing upstream entity partitions.

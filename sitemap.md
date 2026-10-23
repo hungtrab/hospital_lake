@@ -22,9 +22,9 @@ profile. `week1-smoke` and `week1-recovery` check exact Spark/Trino rows and
 container recreation; the live Week 1 recovery gate passed locally on 2026-10-12.
 TV4 smoke checks remain available.
 TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. The Week 1 SparkSession setup is now shared in `spark/common/iceberg.py` and reused by fixtures/bootstrap; batch ingestion is implemented in `spark/batch/ingest_bronze.py`, with metadata and serial batch-ID retries. Unit contracts, structured failure logging (`tests/unit/test_bronze_logging.py`), session compatibility checks (`tests/unit/test_iceberg_session.py`) and real local Spark/Iceberg integration tests cover preservation, retry and failure behavior.
-TV4's Week 3 `spark/batch/silver_to_gold.py` computes four Gold metrics from Silver; `scripts/run_gold.py` submits it with shared Spark configuration. Exact-value local Spark tests and five Trino query examples exist. Live Gold validation still needs Silver tables and their ingestion pipeline.
+TV4's Week 3 `spark/batch/silver_to_gold.py` computes four Gold metrics from Silver; `scripts/run_gold.py` submits it with shared Spark configuration. Exact-value local Spark tests and five Trino query examples exist. All six Silver entities are implemented; the Gold Compose/query checkpoint integration remains TV4's task.
 TV4's Week 4 `spark/streaming/bronze_sink.py` writes validated Kafka micro-batches into Iceberg Bronze/quarantine; `scripts/stream_bronze_probe.py` checks progress over five minutes. Live validation awaits the Kafka reader and producer.
-TV2 Week 2 provides six Bronze DDL contracts, daily hidden partitions and an idempotent, drift-checking table bootstrap. `bronze-smoke` validates isolated Parquet fixtures, S3 metadata, Trino compatibility, raw preservation and reruns. Production Bronze ingestion is available through `make batch-bronze`; the live Week 2 integration gate still needs to be run.
+TV2 Week 2 provides six Bronze DDL contracts, daily hidden partitions and an idempotent, drift-checking table bootstrap. `bronze-smoke` validates isolated Parquet fixtures, S3 metadata, Trino compatibility, raw preservation and reruns. Production Bronze ingestion is available through `make batch-bronze`; the live Week 2 integration gate passed on 2026-10-22 (see `next_step.md`).
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
 ---
@@ -73,7 +73,7 @@ Legend — **Layer**: Lambda layer the code belongs to (Batch / Speed / Serving 
 | Planned file | Content | Wk |
 |---|---|---|
 | `architecture.md` | Implemented local Week 1 topology, versions, persistence and reproducible gate; later batch/stream paths remain planned | 1+ |
-| `data-model.md` | Implemented six-entity source contracts, migration, raw defect semantics and local 10k/100k measurements; Bronze/Silver/Gold integration remains pending | 1–3 |
+| `data-model.md` | Implemented six-entity source contracts, migration, raw defect semantics and local 10k/100k measurements; Bronze and all six Silver contracts; Gold checkpoint integration remains pending | 1–3 |
 | `demo-script.md` | Exact demo commands (`plan.md` §28) | 9 |
 | `benchmark.md` | Raw measurements + interpretation | 8 |
 
@@ -106,22 +106,22 @@ IDs and assigned/transferred/released journeys for non-outpatient encounters.
 Transfers name the new bed and close the prior assignment in the same department;
 open encounters have no release. Bed IDs are synthetic per encounter, not a fixed
 inventory. `bed_transfer_rate` controls transfers. All six source entities exist;
-Scale validation is reproducible with `make validate-generator`; live Bronze
-ingestion remains pending. CSV API clean fixtures and CLI raw fixtures share the same schema.
+Scale validation is reproducible with `make validate-generator`; Bronze
+ingestion is available via `make batch-bronze-docker`. CSV API clean fixtures and CLI raw fixtures share the same schema.
 
 ### 3.4 `spark/` — Batch + Speed processing
 
 | Path | Planned files | Responsibility | TV | Wk |
 |---|---|---|---|---|
 | `common/` | `config.py`, `schemas.py`, `iceberg.py`, `bronze.py`, `data_quality.py`, `normalization.py` | Implemented env config, canonical department/encounter values (`normalization.py`), shared SparkSession, Bronze DDL loader/validation, and batch validation/quarantine metrics. Processing schemas remain planned. **Reuse, don't duplicate.** | TV3 | 1, 3 |
-| `batch/` | `ingest_bronze.py`, `bronze_to_silver.py`, `silver_to_gold.py`, `main.py` | raw Parquet → Bronze → Silver → Gold. TV1's `bronze_to_silver.py` rebuilds Silver from all Bronze rows with an entity registry (patients, encounters; TV2 appends clinical entities) plus `silver.quarantine`; `make batch-silver-docker`. TV4's `silver_to_gold.py` builds four historical Gold tables with a deterministic cutoff and full-table overwrite. | TV3 (Bronze), TV1/TV2 (Silver), TV4 (Gold) | 2–3 |
+| `batch/` | `ingest_bronze.py`, `bronze_to_silver.py`, `silver_to_gold.py`, `main.py` | raw Parquet → Bronze → Silver → Gold. TV1's `bronze_to_silver.py` rebuilds Silver from all Bronze rows with an entity registry (all six entities, including TV2 clinical FK/value validation) plus `silver.quarantine`; `make batch-silver-docker`. TV4's `silver_to_gold.py` builds four historical Gold tables with a deterministic cutoff and full-table overwrite. | TV3 (Bronze), TV1/TV2 (Silver), TV4 (Gold) | 2–3 |
 | `streaming/` | `kafka_reader.py`, `kafka_to_bronze.py`, `bronze_sink.py`, `realtime_aggregates.py`, `main.py` | `kafka_to_bronze.py` wires the envelope reader to TV4's idempotent raw-byte Bronze/quarantine sink. `kafka_reader.py` retains bad events for quarantine and provides valid-only event-time dedup with a watermark for downstream consumers. | TV3, TV4 (sink/quarantine), TV1/TV2 (aggregates) | 4–5 |
 
 ### 3.5 `sql/` — Lakehouse DDL + Serving queries
 
 | Path | Planned files | Responsibility | TV | Wk |
 |---|---|---|---|---|
-| `iceberg/` | `create_bronze_tables.sql`, `create_stream_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | TV2 six Bronze definitions; TV4 two stream Bronze/quarantine and four Gold definitions; TV1 Silver patients/encounters/quarantine (TV2 adds clinical tables) | TV2/TV4 | 2–4 |
+| `iceberg/` | `create_bronze_tables.sql`, `create_stream_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | TV2 six Bronze definitions; TV4 two stream Bronze/quarantine and four Gold definitions; TV1 Silver patients/encounters/quarantine plus TV2 lab_results/bed_events/medications/vitals | TV2/TV4 | 2–4 |
 | `trino/` | `verify_bronze.sql`, `queries.sql` | Bronze ID checks and five historical Gold queries | TV4 | 1–3 |
 | `clickhouse/` | `schema.sql`, `views.sql` | Realtime serving tables: `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | TV3/TV4 | 5 |
 
@@ -227,3 +227,7 @@ INFRA           infra/docker (local first) ──► infra/k8s + infra/helm (Wee
 | A config value | `.env.example` + `spark/common/config.py` (never hardcode) |
 | A one-off debug script | Don't commit it — or make it reusable in `scripts/` |
 | A new top-level command | `Makefile` target |
+
+Clinical Silver tests: `tests/unit/test_silver_clinical.py` cover FK propagation,
+raw quarantine, interval boundaries/nonfinite values, domain normalization,
+duplicates, lineage, reruns and all four DDL output schemas.
