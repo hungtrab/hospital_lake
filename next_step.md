@@ -118,10 +118,11 @@ Nếu T2.1 trễ: T4 vẫn test Gold bằng fixture; TV1 sẽ nhận phần `bed
 1. **Không push thẳng `main`.** Mỗi task = 1 branch `feat|infra|fix|bench/w<tuần>-<tên>` (`works.md` §6; riêng PR chỉ có tài liệu điều phối dùng `docs/…`) + 1 PR theo template `AGENTS.md` §32.
 2. **Audit độc lập bắt buộc** (`AGENTS.md` §33): agent của mỗi TV spawn auditor riêng, ghi model/effort, base/head SHA, verdict, các check đã chạy vào PR.
 3. **Quyết định merge cuối cùng thuộc TV1 (hungtrab) trong sprint checkpoint.** Audit PASS ⇒ PR sẵn sàng merge, nhưng **không tự merge**; TV1 merge theo thứ tự phụ thuộc ở mục 4 sau khi chạy lại test trên `main` mới nhất. (Ngoại lệ tạm thời cho bước 5 của `AGENTS.md` §33 và mục Review của `works.md` §6 — quyết định của thành viên TV1 cho sprint này, chỉ áp dụng đến hết 26/10; không tạo quan hệ owner lâu dài. Thành viên nào phản đối thì nêu trong PR này.)
-4. Commit đứng tên **người thật** trong `git config` — không AI identity, không `Co-Authored-By` AI (`AGENTS.md` §31).
-5. Chạy test local với `TZ=UTC` *và* một lần với `TZ=Asia/Ho_Chi_Minh`; `JAVA_HOME` Java 17+; `PYSPARK_PYTHON=.venv/bin/python`.
-6. Port mặc định (9000/9001/8080) trùng thì đổi trong `.env` (`MINIO_API_PORT`, `MINIO_CONSOLE_PORT`, `TRINO_PORT`) — không sửa `docker-compose.yml`.
-7. Shared contract (tên bảng, cột, topic, biến môi trường) đổi thì phải grep toàn repo và sửa consumer trong cùng PR (`AGENTS.md` §34). Cập nhật `sitemap.md` khi thêm file/thư mục/lệnh mới.
+4. **Commit nhỏ, push dần — không dồn cả task vào 1 commit duy nhất.** Mỗi bước có ý nghĩa (schema/DDL → transform → test → compose/Makefile → docs) là một commit riêng với message theo `AGENTS.md` §31 (`feat(batch): …`, `test(silver): …`), và push lên branch ngay khi xong từng bước (ít nhất mỗi ngày làm việc), không đợi đến lúc mở PR mới push. Lý do: `works.md` đánh giá đóng góp từ lịch sử Git, và commit nhỏ giúp audit/rollback dễ hơn. Commit sửa theo audit cũng là commit mới, không squash/force-push đè lịch sử đã push; TV1 merge PR bằng merge commit (không squash) để giữ nguyên các commit này trên `main`.
+5. Commit đứng tên **người thật** trong `git config` — không AI identity, không `Co-Authored-By` AI (`AGENTS.md` §31).
+6. Chạy test local với `TZ=UTC` *và* một lần với `TZ=Asia/Ho_Chi_Minh`; `JAVA_HOME` Java 17+; `PYSPARK_PYTHON=.venv/bin/python`.
+7. Port mặc định (9000/9001/8080) trùng thì đổi trong `.env` (`MINIO_API_PORT`, `MINIO_CONSOLE_PORT`, `TRINO_PORT`) — không sửa `docker-compose.yml`.
+8. Shared contract (tên bảng, cột, topic, biến môi trường) đổi thì phải grep toàn repo và sửa consumer trong cùng PR (`AGENTS.md` §34). Cập nhật `sitemap.md` khi thêm file/thư mục/lệnh mới.
 
 ---
 
