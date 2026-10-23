@@ -43,3 +43,71 @@ CREATE TABLE IF NOT EXISTS iceberg.silver.quarantine (
 ) USING iceberg
 PARTITIONED BY (entity)
 TBLPROPERTIES ('format-version'='2', 'write.format.default'='parquet');
+
+-- Monthly partitions avoid sparse daily/hourly files at demo scale.
+CREATE TABLE IF NOT EXISTS iceberg.silver.lab_results (
+    lab_result_id STRING,
+    patient_id STRING,
+    encounter_id STRING,
+    test_code STRING,
+    test_name STRING,
+    result_value DOUBLE,
+    unit STRING,
+    reference_low DOUBLE,
+    reference_high DOUBLE,
+    is_abnormal BOOLEAN,
+    measured_at TIMESTAMP_LTZ,
+    _bronze_batch_id STRING,
+    _processed_at TIMESTAMP_LTZ
+) USING iceberg
+PARTITIONED BY (months(measured_at))
+TBLPROPERTIES ('format-version'='2', 'write.format.default'='parquet');
+
+-- Monthly partitions avoid sparse daily/hourly files at demo scale.
+CREATE TABLE IF NOT EXISTS iceberg.silver.bed_events (
+    event_id STRING,
+    patient_id STRING,
+    encounter_id STRING,
+    department STRING,
+    bed_id STRING,
+    event_type STRING,
+    event_time TIMESTAMP_LTZ,
+    _bronze_batch_id STRING,
+    _processed_at TIMESTAMP_LTZ
+) USING iceberg
+PARTITIONED BY (months(event_time))
+TBLPROPERTIES ('format-version'='2', 'write.format.default'='parquet');
+
+-- Monthly partitions avoid sparse daily/hourly files at demo scale.
+CREATE TABLE IF NOT EXISTS iceberg.silver.medications (
+    medication_id STRING,
+    patient_id STRING,
+    encounter_id STRING,
+    drug_name STRING,
+    dose DOUBLE,
+    dose_unit STRING,
+    route STRING,
+    start_time TIMESTAMP_LTZ,
+    end_time TIMESTAMP_LTZ,
+    _bronze_batch_id STRING,
+    _processed_at TIMESTAMP_LTZ
+) USING iceberg
+PARTITIONED BY (months(start_time))
+TBLPROPERTIES ('format-version'='2', 'write.format.default'='parquet');
+
+-- Monthly partitions avoid sparse daily/hourly files at demo scale.
+CREATE TABLE IF NOT EXISTS iceberg.silver.vitals (
+    measurement_id STRING,
+    patient_id STRING,
+    encounter_id STRING,
+    heart_rate INT,
+    spo2 DOUBLE,
+    systolic_bp INT,
+    diastolic_bp INT,
+    temperature DOUBLE,
+    measured_at TIMESTAMP_LTZ,
+    _bronze_batch_id STRING,
+    _processed_at TIMESTAMP_LTZ
+) USING iceberg
+PARTITIONED BY (months(measured_at))
+TBLPROPERTIES ('format-version'='2', 'write.format.default'='parquet');

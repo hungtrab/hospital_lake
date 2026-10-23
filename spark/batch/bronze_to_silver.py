@@ -142,6 +142,118 @@ def _encounters_output(frame):
     ]
 
 
+# --- clinical entities (TV2) --------------------------------------------------
+
+CLINICAL_COLUMNS = {
+    "lab_results": ("lab_result_id", "patient_id", "encounter_id", "test_code", "test_name",
+                    "result_value", "unit", "reference_low", "reference_high", "is_abnormal", "measured_at"),
+    "bed_events": ("event_id", "patient_id", "encounter_id", "department", "bed_id", "event_type", "event_time"),
+    "medications": ("medication_id", "patient_id", "encounter_id", "drug_name", "dose", "dose_unit",
+                    "route", "start_time", "end_time"),
+    "vitals": ("measurement_id", "patient_id", "encounter_id", "heart_rate", "spo2", "systolic_bp",
+               "diastolic_bp", "temperature", "measured_at"),
+}
+
+
+def _clinical_prepare(frame, silver):
+    from pyspark.sql import functions as F
+
+    known = silver["encounters"].select(
+        "encounter_id", F.col("patient_id").alias("_chk_encounter_patient"),
+    ).withColumn("_chk_encounter_known", F.lit(True))
+    return frame.join(known, "encounter_id", "left")
+
+
+def _clinical_rules(frame):
+    from pyspark.sql import functions as F
+
+    return {
+        "UNKNOWN_ENCOUNTER": F.col("_chk_encounter_known"),
+        "ENCOUNTER_PATIENT_MISMATCH": (F.col("_chk_encounter_known").isNull()
+                                       | (F.col("patient_id") == F.col("_chk_encounter_patient"))),
+    }
+
+
+def _finite(name):
+    from pyspark.sql import functions as F
+
+    value = F.col(name)
+    return value.isNotNull() & ~F.isnan(value) & (F.abs(value) != F.lit(float("inf")))
+
+
+def _lab_rules(frame):
+    from pyspark.sql import functions as F
+
+    return dict(_clinical_rules(frame),
+                INVALID_LAB_VALUE=_finite("result_value"),
+                INVALID_REFERENCE_RANGE=(_finite("reference_low") & _finite("reference_high")
+                                         & (F.col("reference_low") <= F.col("reference_high"))))
+
+
+def _lab_output(frame):
+    from pyspark.sql import functions as F
+
+    abnormal = ((F.col("result_value") < F.col("reference_low"))
+                | (F.col("result_value") > F.col("reference_high")))
+    return [abnormal.alias(name) if name == "is_abnormal" else F.col(name)
+            for name in CLINICAL_COLUMNS["lab_results"]]
+
+
+def _bed_prepare(frame, silver):
+    from pyspark.sql import functions as F
+
+    return _clinical_prepare(frame, silver).withColumn("_chk_department", canonical_department(F.col("department")))
+
+
+def _bed_rules(frame):
+    from pyspark.sql import functions as F
+
+    return dict(_clinical_rules(frame),
+                UNKNOWN_DEPARTMENT=F.col("_chk_department").isNotNull(),
+                INVALID_BED_EVENT_TYPE=F.lower(F.trim("event_type")).isin("assigned", "transferred", "released"))
+
+
+def _bed_output(frame):
+    from pyspark.sql import functions as F
+
+    return [F.col("_chk_department").alias("department") if name == "department"
+            else F.lower(F.trim(name)).alias(name) if name == "event_type" else F.col(name)
+            for name in CLINICAL_COLUMNS["bed_events"]]
+
+
+def _medication_rules(frame):
+    from pyspark.sql import functions as F
+
+    return dict(_clinical_rules(frame), INVALID_DOSE=_finite("dose") & (F.col("dose") > 0),
+                END_BEFORE_START=F.col("end_time").isNull() | (F.col("end_time") >= F.col("start_time")))
+
+
+def _medication_output(frame):
+    from pyspark.sql import functions as F
+
+    return [F.lower(F.trim(name)).alias(name) if name == "route"
+            else F.trim(name).alias(name) if name in ("drug_name", "dose_unit") else F.col(name)
+            for name in CLINICAL_COLUMNS["medications"]]
+
+
+def _vital_rules(frame):
+    from pyspark.sql import functions as F
+
+    # Synthetic-data quality bounds, not clinical advice; preserve the same units.
+    return dict(_clinical_rules(frame),
+                INVALID_HEART_RATE=F.col("heart_rate") > 0,
+                INVALID_SPO2=_finite("spo2") & F.col("spo2").between(0.0, 100.0),
+                INVALID_BLOOD_PRESSURE=((F.col("systolic_bp") > 0) & (F.col("diastolic_bp") > 0)
+                                        & (F.col("systolic_bp") >= F.col("diastolic_bp"))),
+                INVALID_TEMPERATURE=_finite("temperature") & F.col("temperature").between(25.0, 45.0))
+
+
+def _vital_output(frame):
+    from pyspark.sql import functions as F
+
+    return [F.col(name) for name in CLINICAL_COLUMNS["vitals"]]
+
+
 ENTITIES: Tuple[SilverEntity, ...] = (
     SilverEntity(
         name="patients", key="patient_id",
@@ -154,6 +266,26 @@ ENTITIES: Tuple[SilverEntity, ...] = (
                   "admission_time", "status"),
         prepare=_encounters_prepare, rules=_encounters_rules, output=_encounters_output,
         depends_on=("patients",),
+    ),
+    SilverEntity(
+        name="lab_results", key="lab_result_id",
+        required=("lab_result_id", "patient_id", "encounter_id", "test_code", "test_name", "unit", "measured_at"),
+        prepare=_clinical_prepare, rules=_lab_rules, output=_lab_output, depends_on=("encounters",),
+    ),
+    SilverEntity(
+        name="bed_events", key="event_id",
+        required=("event_id", "patient_id", "encounter_id", "department", "bed_id", "event_type", "event_time"),
+        prepare=_bed_prepare, rules=_bed_rules, output=_bed_output, depends_on=("encounters",),
+    ),
+    SilverEntity(
+        name="medications", key="medication_id",
+        required=("medication_id", "patient_id", "encounter_id", "drug_name", "dose_unit", "route", "start_time"),
+        prepare=_clinical_prepare, rules=_medication_rules, output=_medication_output, depends_on=("encounters",),
+    ),
+    SilverEntity(
+        name="vitals", key="measurement_id",
+        required=("measurement_id", "patient_id", "encounter_id", "measured_at"),
+        prepare=_clinical_prepare, rules=_vital_rules, output=_vital_output, depends_on=("encounters",),
     ),
 )
 ENTITY_NAMES = tuple(entity.name for entity in ENTITIES)
