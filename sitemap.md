@@ -22,7 +22,7 @@ profile. `week1-smoke` and `week1-recovery` check exact Spark/Trino rows and
 container recreation; the live Week 1 recovery gate passed locally on 2026-10-12.
 TV4 smoke checks remain available.
 TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. The Week 1 SparkSession setup is now shared in `spark/common/iceberg.py` and reused by fixtures/bootstrap; batch ingestion is implemented in `spark/batch/ingest_bronze.py`, with metadata and serial batch-ID retries. Unit contracts, structured failure logging (`tests/unit/test_bronze_logging.py`), session compatibility checks (`tests/unit/test_iceberg_session.py`) and real local Spark/Iceberg integration tests cover preservation, retry and failure behavior.
-TV4's Week 3 `spark/batch/silver_to_gold.py` computes four Gold metrics from Silver; `scripts/run_gold.py` submits it with shared Spark configuration. Exact-value local Spark tests and five Trino query examples exist. All six Silver entities are implemented; `make gold-docker` (Compose service `gold`) rebuilds Gold and is the last step of `make batch`.
+TV4's Week 3 `spark/batch/silver_to_gold.py` computes four Gold metrics from Silver; `scripts/run_gold.py` submits it with shared Spark configuration. Exact-value local Spark tests exist; `make query` runs 11 Silver/Gold Trino queries (`scripts/run_queries.py`) and fails on errors or empty results; `scripts/checkpoint_demo.sh` + `docs/demo-script.md` script the Checkpoint 1 demo. All six Silver entities are implemented; `make gold-docker` (Compose service `gold`) rebuilds Gold and is the last step of `make batch`.
 TV4's Week 4 `spark/streaming/bronze_sink.py` writes validated Kafka micro-batches into Iceberg Bronze/quarantine; `scripts/stream_bronze_probe.py` checks progress over five minutes. TV3's reader runs in Compose (`make stream-bronze-docker`, internal listener `kafka:29092`, persistent checkpoint volume) and TV1's producer feeds it; live arrival and restart without lost or duplicate Kafka offsets were verified at 10–20 events/s, but the Week 4 throughput gate (1000 events/s, 10 min) has not been run.
 TV2 Week 2 provides six Bronze DDL contracts, daily hidden partitions and an idempotent, drift-checking table bootstrap. `bronze-smoke` validates isolated Parquet fixtures, S3 metadata, Trino compatibility, raw preservation and reruns. Production Bronze ingestion is available through `make batch-bronze`; the live Week 2 integration gate passed on 2026-10-22 (see `next_step.md`).
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
@@ -78,7 +78,7 @@ Legend — **Layer**: Lambda layer the code belongs to (Batch / Speed / Serving 
 |---|---|---|
 | `architecture.md` | Lambda batch/speed/serving topology, component status, current Bronze/Silver/stream paths, repository map, and planned Kubernetes deployment; distinguishes runnable pieces from pending integration gates | 1–6 |
 | `data-model.md` | Implemented six-entity source contracts, migration, raw defect semantics and local 10k/100k measurements; Bronze and all six Silver contracts; Gold checkpoint integration remains pending | 1–3 |
-| `demo-script.md` | Exact demo commands (`plan.md` §28) | 9 |
+| `demo-script.md` | Implemented for Checkpoint 1: demo steps, exact commands and measured expected output; extended to the final demo (`plan.md` §28) | 4, 9 |
 | `benchmark.md` | Raw measurements + interpretation | 8 |
 
 Docs describe **what exists**, never planned-but-unbuilt features (`AGENTS.md` §38).
@@ -126,7 +126,7 @@ ingestion is available via `make batch-bronze-docker`. CSV API clean fixtures an
 | Path | Planned files | Responsibility | TV | Wk |
 |---|---|---|---|---|
 | `iceberg/` | `create_bronze_tables.sql`, `create_stream_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | TV2 six Bronze definitions; TV4 two stream Bronze/quarantine and four Gold definitions; TV1 Silver patients/encounters/quarantine plus TV2 lab_results/bed_events/medications/vitals | TV2/TV4 | 2–4 |
-| `trino/` | `verify_bronze.sql`, `queries.sql` | Bronze ID checks and five historical Gold queries | TV4 | 1–3 |
+| `trino/` | `verify_bronze.sql`, `queries.sql` | Bronze ID checks and 11 historical Silver/Gold queries run by `make query` | TV4 | 1–3 |
 | `clickhouse/` | `schema.sql`, `views.sql` | Realtime serving tables: `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | TV3/TV4 | 5 |
 
 ### 3.6 `dashboard/grafana/` — Serving · TV4
@@ -175,6 +175,8 @@ No manually-clicked dashboards; everything provisioned from these files.
 | `trino_smoke.py` | TV4: row-count check; `--check-stack` probes engine/catalog/count/data, `--compose` uses container CLI. Uses `TRINO_HOST`/`TRINO_PORT` or `--server`; returns nonzero on failure. | 1 |
 | `verify_bronze.py` | TV4: compare CSV/Parquet source count and stable-ID checksum with one Bronze `_batch_id` through Trino; `make verify-bronze` | 2 |
 | `run_gold.py` | TV4: submit Gold Spark job using shared Iceberg/MinIO settings; `make gold` | 3 |
+| `run_queries.py` | Run every titled statement in `sql/trino/queries.sql` through Trino, print results, exit 1 on an error or empty result; `make query` | 3 |
+| `checkpoint_demo.sh` | Checkpoint 1 demo: `make up` → `make batch` → `make query` → `make test` (`STREAM=1` adds Kafka + producer); see `docs/demo-script.md` | 4 |
 | `stream_bronze_probe.py` | TV4: poll Trino for Bronze growth, quarantine and duplicate offsets over five minutes; `make stream-bronze-probe` | 4 |
 | `reset.sh` | Dev reset (not a substitute for idempotency) | 1+ |
 | `check_generator.py` | TV1 Week 2: actual six-entity schema/FK/count validation and same-seed scale reruns; `verify-generated`, `validate-generator`; JSON report in ignored `results/` | 2 |
