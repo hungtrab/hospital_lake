@@ -3,12 +3,13 @@ COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then printf 'docke
 
 .PHONY: kafka-recovery kafka-up kafka-stop kafka-topics kafka-smoke batch batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold gold-docker stream-bronze stream-bronze-docker stream-bronze-probe produce produce-dry-run query slides slides-explained stream-gate
 .DEFAULT_GOAL := help
-.PHONY: video-setup video-voice video-timeline video-preview video
+.PHONY: video-setup video-voice video-timeline video-preview video slides-report
 
 VIDEO_PYTHON ?= python3
 VIDEO_CONCURRENCY ?= 2
 
 help:
+	@printf '%s\n' 'make slides-report  Build the minimal English Checkpoint 1 report with default Beamer and pdfLaTeX'
 	@printf '%s\n' 'make video-setup  Install the optional video toolchain' 'make video-voice VIDEO_PYTHON=<speech-environment-python>  Generate Northern narration' 'make video-timeline VIDEO_PYTHON=<speech-environment-python>  Align narration and captions' 'make video-preview  Type-check and render key video frames' 'make video [VIDEO_CONCURRENCY=2]  Render, normalize, verify and package the introduction'
 	@printf '%s\n' 'make slides-explained  Build the Vietnamese beginner Beamer deck; open docs/hospitallake-explained.html for the offline interactive guide'
 	@printf '%s\n' 'make kafka-topics  Safely create/validate Kafka topics' 'make kafka-recovery PYTHON=.venv/bin/python  Verify data/offset persistence after broker recreation'
@@ -212,6 +213,10 @@ slides:
 # Beginner companion; same XeLaTeX/Fira dependencies as the checkpoint deck.
 slides-explained:
 	latexmk -xelatex -halt-on-error -interaction=nonstopmode -outdir=results/slides docs/slides/hospitallake-explained.tex
+
+# English checkpoint report: stock Beamer theme/fonts/colors, pdfLaTeX.
+slides-report:
+	latexmk -pdf -halt-on-error -interaction=nonstopmode -outdir=results/slides docs/slides/checkpoint-1-report-en.tex
 
 # Optional presentation tooling; independent from the data pipeline.
 video-setup:
