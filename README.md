@@ -379,7 +379,7 @@ using host-reachable endpoints when running Spark on the host. For example:
 ```bash
 export MINIO_ENDPOINT=http://localhost:9000 ICEBERG_CATALOG_URI=http://localhost:8181
 export MINIO_ACCESS_KEY=... MINIO_SECRET_KEY=... ICEBERG_WAREHOUSE=s3://warehouse/
-export GOLD_AS_OF=2026-10-02T04:00:00Z GOLD_BED_CAPACITIES=ICU=20,CARDIOLOGY=50
+export GOLD_AS_OF=2026-09-01T00:00:00Z GOLD_BED_CAPACITIES=ICU=20,EMERGENCY=40,CARDIOLOGY=50,INTERNAL_MEDICINE=60,SURGERY=50
 make gold
 python -m unittest discover -s tests/unit -p 'test_gold_metrics.py' -v
 ```
