@@ -155,10 +155,13 @@ While it is running, publish events in a second terminal and run the progress
 probe in a third:
 
 ```bash
-make produce RATE=10 DURATION=30
+make produce RATE=10 DURATION=300
 # Separate terminal:
 make stream-bronze-probe
 ```
+
+Keep the producer active for the five-minute probe window; the probe fails if
+Bronze makes no progress for 60 seconds.
 
 `make test` covers implemented local behavior; it does not imply that the live
 Kafka, Iceberg, Gold, ClickHouse, Grafana, or Kubernetes gates have passed.

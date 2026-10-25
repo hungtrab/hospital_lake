@@ -533,8 +533,11 @@ make stream-bronze-docker
 Then publish events from another terminal:
 
 ```bash
-make produce RATE=10 DURATION=30
+make produce RATE=10 DURATION=300
 ```
+
+Keep the producer active for the five-minute probe window; the probe fails if
+Bronze makes no progress for 60 seconds.
 
 Compose connects to Kafka's internal listener from `STREAM_KAFKA_BOOTSTRAP_SERVERS`
 (`kafka:29092` by default). It stores its checkpoint and Maven cache in the
