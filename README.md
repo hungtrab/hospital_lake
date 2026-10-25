@@ -571,3 +571,65 @@ recompute Silver and replace each entity's quarantine partition. See
 [clinical contracts](docs/data-model.md#week-3-clinical-silver-tv2-t21) for
 validation bounds, lineage and monthly partitions. This enables Gold's lab/bed
 inputs; the complete checkpoint gate still requires TV4's Gold/query integration.
+
+### TV2 Week 4: local Kafka (T2.2)
+
+```bash
+# From a fresh checkout, create .env first; Kafka needs Docker, not host Java.
+test -f .env || cp .env.example .env
+make kafka-up
+make kafka-smoke PYTHON=.venv/bin/python  # install requirements.txt first
+make produce PYTHON=.venv/bin/python KAFKA_BOOTSTRAP_SERVERS=localhost:9092 RATE=100 DURATION=10
+make kafka-recovery PYTHON=.venv/bin/python  # optional: recreate broker, retain volume
+make kafka-stop
+```
+
+`kafka-up` starts only the optional `kafka` profile broker and then bootstraps
+`hospital.events` and `hospital.dlq`. Regular `make up` remains batch-only.
+The pinned `apache/kafka:3.9.1` service runs one combined KRaft broker/controller,
+with a persistent `kafka-data` volume and no ZooKeeper. Configuration follows
+[Apache's single-node Docker example](https://github.com/apache/kafka/blob/3.9.1/docker/examples/docker-compose-files/single-node/plaintext/docker-compose.yml).
+
+| Client | Bootstrap address |
+|---|---|
+| Host producer / Python smoke | `localhost:9092` (published on loopback only) |
+| Compose Spark / container clients | `kafka:29092` |
+
+TV3's stream Compose service must use `KAFKA_BOOTSTRAP_SERVERS=kafka:29092` and
+depend on successful `kafka-init` completion. The host address is not usable
+from inside Spark containers. Set `KAFKA_PORT` in `.env` to change the host port;
+pass the corresponding address to host `make produce`. Smoke discovers the
+published port automatically. `KAFKA_TOPICS=hospital.events` is the existing
+reader/producer contract; DLQ is bootstrapped separately.
+
+Both topics start with `KAFKA_TOPIC_PARTITIONS=3`, replication factor 1 and
+broker retention 24 hours. This is a local development setting, not HA or a
+throughput claim. Producer keys are UTF-8 `patient_id`, preserving per-patient
+partition routing and order; there is no global ordering across partitions.
+Automatic topic creation is disabled. `make kafka-topics` safely reruns bootstrap,
+validates existing partition/replica counts and fails on drift. It never deletes
+or automatically repartitions an existing topic, which could change key routing.
+
+Smoke sends 24 valid TV1 simulator events, checks exact keyed bytes and
+per-patient order/partitions, reads host-produced data using an internal client,
+and sends an internal keyed event back to the host consumer. It also checks DLQ
+transport. Probes remain in the topics until retention; consumer groups and
+existing offsets are untouched. `kafka-recovery` additionally rereads acknowledged
+event/DLQ keys, bytes and original offsets after recreating the broker container.
+It is a persistence check, not an active-workload fault/recovery benchmark.
+
+This completes Kafka local transport for T2.2. Spark streaming Compose/checkpoint
+integration remains TV3's T3.2. Neither smoke nor recovery certifies Spark DLQ
+routing or the postponed 1,000 events/s, 10-minute Week 4 gate.
+
+Local validation (2026-10-24): topic bootstrap/rerun passed; a requested
+partition-count mismatch failed without altering existing topics. Host/internal
+keyed smoke passed with kafka-python 3.0.11 and the minimum supported 2.1.0.
+Acknowledged event/DLQ offsets and bytes survived broker recreation. A separate
+Compose project started with `.env.example`, fresh Kafka volume/network and host
+port 19092, then passed smoke; its test resources were removed afterward. The
+existing TV1 producer also delivered 20 events successfully. These are functional
+checks, not throughput benchmarks or a full-system fresh-clone certification.
+UTC regression: 145 passed, 10 opt-in integration checks skipped, 85 subtests.
+At `TZ=Asia/Ho_Chi_Minh`: 144 passed, 10 skipped, 85 subtests, with the unchanged
+TV4 Gold hourly timezone failure documented in `next_step.md` T4.1.

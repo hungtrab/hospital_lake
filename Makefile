@@ -1,10 +1,12 @@
 PYTHON ?= python3
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then printf 'docker compose'; else printf 'docker-compose'; fi)
 
-.PHONY: batch batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold stream-bronze-probe stream-bronze produce produce-dry-run
+.PHONY: kafka-recovery kafka-up kafka-stop kafka-topics kafka-smoke batch batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold stream-bronze-probe stream-bronze produce produce-dry-run
 .DEFAULT_GOAL := help
 
 help:
+	@printf '%s\n' 'make kafka-topics  Safely create/validate Kafka topics' 'make kafka-recovery PYTHON=.venv/bin/python  Verify data/offset persistence after broker recreation'
+	@printf '%s\n' 'make kafka-up  Start optional local KRaft broker and bootstrap topics' 'make kafka-smoke PYTHON=.venv/bin/python  Verify host/internal keyed produce-consume' 'make kafka-stop  Stop Kafka; preserve its data volume'
 	@printf '%s\n' 'make batch-bronze BATCH_ID=demo-001 [INPUT_DIR=data/generated] [ENTITIES=patients]' 'make test-bronze Run local Spark/Iceberg ingestion checks'
 	@printf '%s\n' 'make batch-bronze-docker BATCH_ID=demo-001  Run ingestion with Compose Spark and a read-only INPUT_DIR mount'
 	@printf '%s\n' 'make batch [PATIENTS=1000 SEED=42]  Full batch path: generate -> bootstrap Bronze -> ingest Bronze -> verify -> Silver (Gold: TV4 T4.1)'
@@ -159,3 +161,20 @@ produce-dry-run:
 
 test-bronze:
 	RUN_BRONZE_TESTS=1 $(PYTHON) -m unittest discover -s tests/integration -p test_bronze_ingestion.py -v
+
+# Explicit services avoid starting/rebuilding unrelated batch infrastructure.
+kafka-up:
+	$(COMPOSE) up -d --wait --wait-timeout 180 kafka
+	$(MAKE) kafka-topics
+
+kafka-topics:
+	$(COMPOSE) run --rm --no-deps kafka-init
+
+kafka-stop:
+	$(COMPOSE) stop kafka
+
+kafka-smoke:
+	COMPOSE="$(COMPOSE)" $(PYTHON) -m scripts.kafka_smoke
+
+kafka-recovery:
+	COMPOSE="$(COMPOSE)" $(PYTHON) -m scripts.kafka_smoke --restart
