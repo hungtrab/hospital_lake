@@ -276,6 +276,9 @@ services:
       - spark.jars.ivy=/tmp/ivy
       - --packages
       - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.0,org.apache.iceberg:iceberg-aws-bundle:1.9.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.5
+      # Already in /opt/spark/jars; skipping them avoids ~55 MB of first-start downloads.
+      - --exclude-packages
+      - org.apache.hadoop:hadoop-client-runtime,org.apache.hadoop:hadoop-client-api,org.lz4:lz4-java,org.xerial.snappy:snappy-java,org.slf4j:slf4j-api,commons-logging:commons-logging,com.google.code.findbugs:jsr305
       - spark/streaming/kafka_to_bronze.py
 
 volumes:
