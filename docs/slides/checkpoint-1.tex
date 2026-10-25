@@ -1,0 +1,234 @@
+% HospitalLake — Checkpoint 1 (26/10/2026). Build: make slides  (xelatex, Beamer Metropolis)
+\documentclass[aspectratio=169,11pt]{beamer}
+\usetheme[progressbar=frametitle,numbering=fraction]{metropolis}
+\usepackage{fontspec}
+\setsansfont{FiraSans}[Extension=.otf,UprightFont=*-Light,BoldFont=*-SemiBold,ItalicFont=*-LightItalic,BoldItalicFont=*-SemiBoldItalic]
+\setmonofont{FiraMono}[Extension=.otf,UprightFont=*-Regular,BoldFont=*-Medium]
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,backgrounds}
+
+\definecolor{navy}{HTML}{14213D}
+\definecolor{teal}{HTML}{0F766E}
+\definecolor{tealsoft}{HTML}{D7EFEC}
+\definecolor{muted}{HTML}{5A6577}
+\definecolor{plan}{HTML}{8A96A8}
+\definecolor{paper}{HTML}{F7F8F5}
+\setbeamercolor{frametitle}{bg=navy,fg=paper}
+\setbeamercolor{background canvas}{bg=paper}
+\setbeamercolor{normal text}{fg=navy}
+\setbeamercolor{alerted text}{fg=teal}
+\setbeamercolor{progress bar}{fg=teal,bg=tealsoft}
+\setbeamercolor{title separator}{fg=teal}
+
+% Measured 25/10/2026 (results/stream-gate.json, make test)
+\newcommand{\GATERATE}{1000}
+\newcommand{\GATEMSGS}{600k}
+\newcommand{\GATELAG}{71.777}
+\newcommand{\GATECATCHUP}{103}
+\newcommand{\GATETESTS}{152}
+\newcommand{\cmd}[1]{{\ttfamily\small\color{teal}#1}}
+\newcommand{\bignum}[2]{\begin{minipage}[t]{0.23\textwidth}\centering{\Huge\bfseries\color{teal}#1}\\[2pt]{\small\color{muted}#2}\end{minipage}}
+
+\tikzset{
+  done/.style={draw=teal,fill=teal,text=paper,rounded corners=3pt,minimum height=9mm,
+               text width=19mm,align=center,font=\scriptsize\bfseries,inner sep=2pt},
+  todo/.style={draw=plan,dashed,fill=paper,text=muted,rounded corners=3pt,minimum height=9mm,
+               text width=19mm,align=center,font=\scriptsize\bfseries,inner sep=2pt},
+  flow/.style={-{Stealth[length=2mm]},thick,color=plan},
+}
+
+\title{HospitalLake}
+\subtitle{Data Lakehouse bệnh viện cho phân tích batch và real-time}
+\date{Checkpoint 1 · 26/10/2026}
+\author{Nhóm 4 thành viên (TV1–TV4) · \texttt{github.com/hungtrab/hospital\_lake}}
+\institute{Big Data · Dữ liệu tổng hợp (synthetic), không có thông tin bệnh nhân thật}
+
+\begin{document}
+
+\maketitle
+
+\begin{frame}{Mục tiêu đề tài}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.31\textwidth}
+      {\color{teal}\small\bfseries 01 · LAKEHOUSE}\\[2pt]
+      \textbf{Bronze → Silver → Gold}\\[4pt]
+      {\small Giữ dữ liệu gốc, chuẩn hoá và kiểm tra chất lượng, rồi tính chỉ số phân tích trên MinIO + Apache Iceberg.}
+    \column{0.31\textwidth}
+      {\color{teal}\small\bfseries 02 · LAMBDA}\\[2pt]
+      \textbf{Batch và real-time}\\[4pt]
+      {\small Spark batch cho dữ liệu lịch sử; Kafka + Spark Structured Streaming cho sự kiện trực tiếp.}
+    \column{0.31\textwidth}
+      {\color{teal}\small\bfseries 03 · CLOUD-NATIVE}\\[2pt]
+      \textbf{Chạy trên Kubernetes}\\[4pt]
+      {\small Mở rộng, giám sát, phục hồi lỗi, chứng minh bằng số đo (tuần 6–9).}
+  \end{columns}
+  \vfill
+  \alert{Trọng tâm là hệ thống Big Data}: không chẩn đoán y khoa, không mô hình AI.
+\end{frame}
+
+\begin{frame}{Kiến trúc hệ thống (Lambda)}
+  \centering
+  \begin{tikzpicture}[node distance=4mm]
+    % batch layer
+    \node[font=\scriptsize\ttfamily,text=teal,anchor=west] (bl) at (0,0) {BATCH LAYER};
+    \node[done,below=1mm of bl.south west,anchor=north west] (gen) {Generator\\Parquet};
+    \node[done,right=of gen] (bz) {Spark\\Bronze};
+    \node[done,right=of bz] (sv) {Spark\\Silver};
+    \node[done,right=of sv] (gd) {Spark\\Gold};
+    \node[done,right=of gd] (tr) {Trino\\SQL};
+    \draw[flow] (gen) -- (bz); \draw[flow] (bz) -- (sv); \draw[flow] (sv) -- (gd); \draw[flow] (gd) -- (tr);
+    % speed layer
+    \node[font=\scriptsize\ttfamily,text=teal,anchor=west,below=7mm of gen.south west] (sl) {SPEED LAYER};
+    \node[done,below=1mm of sl.south west,anchor=north west] (sim) {Event\\simulator};
+    \node[done,right=of sim] (kf) {Kafka\\KRaft};
+    \node[done,right=of kf] (ss) {Structured\\Streaming};
+    \node[done,right=of ss] (sb) {Bronze\\stream};
+    \node[todo,right=of sb] (ch) {ClickHouse\\Grafana};
+    \draw[flow] (sim) -- (kf); \draw[flow] (kf) -- (ss); \draw[flow] (ss) -- (sb); \draw[flow,dashed] (sb) -- (ch);
+    % storage + platform
+    \node[draw=teal,fill=tealsoft,rounded corners=3pt,text=navy,font=\scriptsize,minimum height=7mm,
+          below=6mm of sim.south west,anchor=north west,text width=62mm,align=left] (st)
+          {\textbf{Lưu trữ chung:} MinIO (S3) + Iceberg REST};
+    \node[draw=plan,dashed,fill=paper,rounded corners=3pt,text=muted,font=\scriptsize,minimum height=7mm,
+          right=4mm of st,text width=62mm,align=left] (k8s)
+          {\textbf{Kế hoạch:} Kubernetes, Spark Operator, Strimzi, Prometheus};
+  \end{tikzpicture}
+  \vfill
+  {\footnotesize\color{muted} Ô đặc: đã chạy bằng lệnh \cmd{make}. Ô viền đứt: kế hoạch tuần 5–9. Chi tiết: \texttt{docs/architecture.md}}
+\end{frame}
+
+\begin{frame}{Dữ liệu: 6 thực thể bệnh viện}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.46\textwidth}
+      \begin{tabular}{@{}lr@{}}
+        \toprule
+        \textbf{Thực thể} & \textbf{Số dòng} \\
+        \midrule
+        patients     & 1.000 \\
+        encounters   & 3.094 \\
+        lab\_results & 12.839 \\
+        medications  & 6.149 \\
+        vitals       & 9.261 \\
+        bed\_events  & 3.938 \\
+        \bottomrule
+      \end{tabular}\\[4pt]
+      {\scriptsize\color{muted} \cmd{make generate-data PATIENTS=1000 SEED=42}}
+    \column{0.5\textwidth}
+      \textbf{Có thể tái lập}\\
+      {\small Cùng seed cho đúng cùng dữ liệu trên mọi máy; quy mô đã thử tới 100k bệnh nhân.}\\[8pt]
+      \textbf{Có lỗi cài sẵn có chủ đích}\\
+      {\small Bản ghi trùng, tên khoa viết tắt, giờ ra viện trước giờ nhập viện: để kiểm chứng tầng Silver.}\\[8pt]
+      \textbf{Bronze khớp nguồn}\\
+      {\small \cmd{make verify-bronze}: khớp số dòng và checksum SHA-256 của ID cho cả 6 bảng.}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Batch layer: Bronze → Silver → Gold}
+  \small
+  \begin{tabular}{@{}lrrrl@{}}
+    \toprule
+    \textbf{Bảng Silver} & \textbf{Bronze} & \textbf{Hợp lệ} & \textbf{Bị loại} & \textbf{Lý do bị loại} \\
+    \midrule
+    patients     & 1.000  & 1.000  & 0  & — \\
+    encounters   & 3.094  & 3.058  & 5  & giờ ra viện trước giờ nhập viện \\
+    lab\_results & 12.839 & 12.719 & 12 & thuộc encounter bị loại \\
+    medications  & 6.149  & 6.139  & 10 & thuộc encounter bị loại \\
+    vitals       & 9.261  & 9.248  & 13 & thuộc encounter bị loại \\
+    bed\_events  & 3.938  & 3.934  & 4  & thuộc encounter bị loại \\
+    \bottomrule
+  \end{tabular}\\[4pt]
+  {\footnotesize\color{muted} Trước khi kiểm tra, bản ghi trùng y hệt được gộp: 31 encounters, 108 lab\_results.}\\[10pt]
+  \textbf{Gold} (\cmd{make gold-docker}): hourly metrics 14.343 · department daily 2.373 · lab daily 3.258 · ICU occupancy 14.343 dòng
+  \vfill
+  {\footnotesize\color{muted} Không xoá dữ liệu lỗi: dòng bị loại nằm trong \texttt{silver.quarantine} kèm mã lý do. Chạy lại cho kết quả giống hệt.}
+\end{frame}
+
+\begin{frame}{Phân tích lịch sử qua Trino}
+  \begin{center}
+    \bignum{11/11}{query Silver/Gold có kết quả (\cmd{make query})}\hfill
+    \bignum{187 h}{thời gian nằm viện TB của ICU}\hfill
+    \bignum{27,8\%}{tỷ lệ xét nghiệm Glucose bất thường}\hfill
+    \bignum{40\%}{lấp đầy ICU tháng 8 (20 giường)}
+  \end{center}
+  \vfill
+  \small
+  Các query: số ca nhập viện theo ngày · thời gian nằm viện theo khoa · tỷ lệ xét nghiệm bất thường · công suất ICU theo tháng · lịch sử khám của một bệnh nhân · chất lượng dữ liệu theo mã lý do.\\[4pt]
+  {\footnotesize\color{muted} SQL nằm trong \texttt{sql/trino/queries.sql}; query nào lỗi hoặc rỗng thì \cmd{make query} trả mã lỗi.}
+\end{frame}
+
+\begin{frame}{Speed layer: gate tuần 4}
+  \begin{center}
+    \bignum{\GATERATE}{event/s producer đo được}\hfill
+    \bignum{10 phút}{chạy liên tục}\hfill
+    \bignum{\GATEMSGS}{message Kafka → Bronze}\hfill
+    \bignum{0}{offset mất hoặc trùng}
+  \end{center}
+  \vfill
+  \small
+  \begin{itemize}
+    \item Producer có event trễ, trùng và lỗi định dạng có chủ đích; event lỗi vào \texttt{stream\_events\_quarantine}, không làm dừng stream.
+    \item Kill container stream giữa chừng rồi chạy lại: checkpoint giúp Bronze vẫn đủ mọi offset, không trùng.
+    \item Reader 1 core (\texttt{local[1]}) xử lý $\approx$950 event/s: lag dao động tới \GATELAG{} message, về 0 sau \GATECATCHUP{} giây khi producer dừng. Scale reader là việc tuần 7.
+  \end{itemize}
+  {\footnotesize\color{muted} Tái lập: \cmd{make stream-bronze-docker} rồi \cmd{make stream-gate}}
+\end{frame}
+
+\begin{frame}{Quy trình làm việc}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.48\textwidth}
+      \textbf{Một lệnh cho checkpoint}\\
+      \cmd{cp .env.example .env}\\
+      \cmd{make up \&\& make batch}\\
+      \cmd{make query \&\& make test}\\[4pt]
+      {\small \texttt{scripts/checkpoint\_demo.sh} đã chạy thử trên clone mới, volume mới: thành công.}
+    \column{0.48\textwidth}
+      \textbf{Kiểm thử và review}\\
+      {\small
+      \begin{itemize}
+        \item \GATETESTS{} test tự động (unit + contract), pass ở cả UTC và UTC+7.
+        \item Mỗi PR qua một agent audit độc lập; PASS mới merge, có ghi base/head SHA.
+        \item Commit nhỏ, đứng tên người thật trong Git.
+      \end{itemize}}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Tiến độ theo tuần}
+  \small
+  \begin{tabular}{@{}llp{0.52\textwidth}l@{}}
+    \toprule
+    \textbf{Tuần} & \textbf{Chủ đề} & \textbf{Gate} & \textbf{Trạng thái} \\
+    \midrule
+    1 & Lakehouse bootstrap & Spark → Iceberg → Trino & \alert{Xong} \\
+    2 & Generator + Bronze  & 6 bảng Bronze khớp nguồn & \alert{Xong} \\
+    3 & Silver + Gold       & Bronze → Silver → Gold → SQL & \alert{Xong} \\
+    4 & Kafka + streaming   & 1000 event/s, 10 phút → Bronze & \alert{Xong} \\
+    5 & Realtime serving    & Kafka → Spark → ClickHouse → Grafana & Tiếp theo \\
+    6–9 & K8s, scale, benchmark & Chạy trên K8s, phục hồi lỗi, demo cuối & Kế hoạch \\
+    \bottomrule
+  \end{tabular}
+\end{frame}
+
+\begin{frame}{Kế hoạch tiếp theo}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.31\textwidth}
+      {\color{teal}\small\bfseries TUẦN 5}\\[2pt]
+      \textbf{Realtime analytics}\\[4pt]
+      {\small Gộp theo cửa sổ event-time, ghi vào ClickHouse, dashboard Grafana được provision từ code.}
+    \column{0.31\textwidth}
+      {\color{teal}\small\bfseries TUẦN 6–7}\\[2pt]
+      \textbf{Kubernetes}\\[4pt]
+      {\small Strimzi, Spark Operator, PVC; scale executor, thử kill pod và đo phục hồi.}
+    \column{0.31\textwidth}
+      {\color{teal}\small\bfseries TUẦN 8–9}\\[2pt]
+      \textbf{Benchmark + demo}\\[4pt]
+      {\small Đo throughput, lag, độ trễ end-to-end; xử lý small files; demo trên môi trường mới.}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[standout]
+  Demo trực tiếp\\[8pt]
+  {\normalsize\ttfamily scripts/checkpoint\_demo.sh}
+\end{frame}
+
+\end{document}
