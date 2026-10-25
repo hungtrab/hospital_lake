@@ -224,7 +224,7 @@ A matching row count alone does not prove all field values. TV2's
 
 ### TV4 local Trino deployment
 
-`docker-compose.yml` currently provisions **MinIO, Iceberg REST Catalog and Trino**. Trino uses image
+`docker-compose.yml` on `main` provisions **MinIO, Iceberg REST Catalog and Trino**. The TV3 stream branch adds an opt-in Spark reader profile. Trino uses image
 `trinodb/trino:483` and mounts the Iceberg REST/S3 catalog in `infra/docker/trino/`, uses a 1 GiB JVM
 heap within a 2 GiB container limit, and publishes its port on localhost.
 
@@ -239,10 +239,11 @@ heap within a 2 GiB container limit, and publishes its port on localhost.
 
 The health check runs `SELECT 1`: it proves query-engine readiness only, not
 Iceberg or MinIO connectivity. The table smoke check above verifies the next
-stage once TV3 has written a fixture. Stop this service with `docker compose stop trino`.
-MinIO, catalog and Trino share the `hospital-lake` network. A Spark fixture job
-is provided in the optional `smoke` profile. Shared SparkSession creation is
-available in `spark/common/iceberg.py`; production batch/stream jobs remain pending.
+stage once Spark has written a fixture. Stop this service with `docker compose stop trino`.
+MinIO, catalog and Trino share the `hospital-lake` network. Spark smoke jobs
+are provided in the optional `smoke` profile. Shared SparkSession creation is
+available in `spark/common/iceberg.py`; batch Bronze/Silver jobs and the streaming
+reader/sink exist, while full live integration depends on their required services.
 
 Once the table is available, run all four read-only probes using the CLI bundled
 in the Trino container (no host CLI installation needed):
@@ -515,6 +516,33 @@ malformed envelopes, retained raw bytes, event-time parsing, duplicate filtering
 and watermark attachment. They do not certify the live Kafka → Spark → Iceberg
 integration gate.
 
+For the Compose Spark 3.5.5 reader, first start the Lakehouse and Kafka services
+(the Kafka target is provided by TV2's integration), then run:
+
+```bash
+make up
+make kafka-up
+```
+
+Start the reader in one terminal:
+
+```bash
+make stream-bronze-docker
+```
+
+Then publish events from another terminal:
+
+```bash
+make produce RATE=10 DURATION=30
+```
+
+Compose connects to Kafka's internal listener from `STREAM_KAFKA_BOOTSTRAP_SERVERS`
+(`kafka:9092` by default). It stores its checkpoint and Maven cache in the
+persistent `stream-state` Docker volume, so removing/recreating the one-off Spark
+container does not discard restart state. Set `STREAM_CHECKPOINT_LOCATION_DOCKER`
+to choose another path inside that volume. A live run still requires the Kafka
+service, stream table creation, and reachable Iceberg/MinIO services.
+
 ### TV4 Week 4: streaming Bronze and quarantine
 
 `spark/streaming/bronze_sink.py` exposes `start_stream(validated,
@@ -531,7 +559,8 @@ distinct Kafka messages with the same `event_id` remain in raw Bronze.
 The checkpoint path must persist across restarts.
 
 When the Kafka producer, reader, REST catalog, and MinIO are running, start the
-reader with `make stream-bronze`, then run the continuous Trino probe:
+reader with `make stream-bronze` (host PySpark) or `make stream-bronze-docker`
+(Compose Spark), then run the continuous Trino probe:
 
 ```bash
 make stream-bronze-probe

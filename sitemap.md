@@ -23,8 +23,8 @@ container recreation; the live Week 1 recovery gate passed locally on 2026-10-12
 TV4 smoke checks remain available.
 TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. The Week 1 SparkSession setup is now shared in `spark/common/iceberg.py` and reused by fixtures/bootstrap; batch ingestion is implemented in `spark/batch/ingest_bronze.py`, with metadata and serial batch-ID retries. Unit contracts, structured failure logging (`tests/unit/test_bronze_logging.py`), session compatibility checks (`tests/unit/test_iceberg_session.py`) and real local Spark/Iceberg integration tests cover preservation, retry and failure behavior.
 TV4's Week 3 `spark/batch/silver_to_gold.py` computes four Gold metrics from Silver; `scripts/run_gold.py` submits it with shared Spark configuration. Exact-value local Spark tests and five Trino query examples exist. Live Gold validation still needs Silver tables and their ingestion pipeline.
-TV4's Week 4 `spark/streaming/bronze_sink.py` writes validated Kafka micro-batches into Iceberg Bronze/quarantine; `scripts/stream_bronze_probe.py` checks progress over five minutes. Live validation awaits the Kafka reader and producer.
-TV2 Week 2 provides six Bronze DDL contracts, daily hidden partitions and an idempotent, drift-checking table bootstrap. `bronze-smoke` validates isolated Parquet fixtures, S3 metadata, Trino compatibility, raw preservation and reruns. Production Bronze ingestion is available through `make batch-bronze`; the live Week 2 integration gate still needs to be run.
+TV4's Week 4 `spark/streaming/bronze_sink.py` writes validated Kafka micro-batches into Iceberg Bronze/quarantine; `scripts/stream_bronze_probe.py` checks progress over five minutes. TV3's Kafka reader and TV1's producer are implemented; the live stream awaits TV2's Kafka local service and has not passed the end-to-end gate. The TV3 branch adds a Compose Spark reader profile and persistent checkpoint volume.
+TV2 Week 2 provides six Bronze DDL contracts, daily hidden partitions and an idempotent, drift-checking table bootstrap. `bronze-smoke` validates isolated Parquet fixtures, S3 metadata, Trino compatibility, raw preservation and reruns. Production Bronze ingestion is available through `make batch-bronze`; the live Week 2 integration gate passed on 2026-10-22 according to `next_step.md`.
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
 ---
@@ -60,7 +60,7 @@ Root command/config files (Milestone 0, `plan.md` §22):
 | `requirements.txt`, `pyproject.toml` | Generator dependencies and pytest discovery for both pytest/unittest suites. |
 | `Makefile` | `batch` runs the batch path end to end (generate → Bronze → verify → Silver; Gold added by TV4); `batch-silver(-docker)` rebuilds Silver. Includes `batch-bronze` and `test-bronze` for ingestion/local integration. Week 2: `bootstrap-bronze`, `bronze-smoke`. Week 1 commands: `minio-up`, `minio-stop`, `bootstrap-bucket`, `test-minio`, `week1-smoke`, `week1-recovery`. `setup` installs dependencies; `generate-data` writes configurable Parquet/CSV; `test` runs both styles with pytest. `verify-generated` checks Parquet source contracts; `validate-generator` repeats 10k/100k generation and records deterministic hashes. Includes `verify-bronze` and `gold` for TV4 batch validation and Gold submission, plus local and Trino targets. |
 | `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; synthetic-data local credentials shared by MinIO/Trino; `MINIO_IMAGE`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`, `ICEBERG_REST_PORT` configure the local storage service. Endpoints use Compose service names. Makefile supports both Compose CLI forms via `COMPOSE`; Trino clients accept the `COMPOSE` override, which Make propagates. Never commit `.env`. |
-| `docker-compose.yml` | MinIO, `minio-init`, Iceberg REST, Trino and optional Spark/Bronze bootstrap/smoke profiles share `hospital-lake`; `minio-data` persists objects, `iceberg-catalog` persists SQLite metadata, `spark-ivy` caches fixture connectors, and `stream-state` persists the streaming connector cache/checkpoint. The stream profile connects to the Kafka network listener. |
+| `docker-compose.yml` | Main provisions MinIO, `minio-init`, Iceberg REST, Trino and optional Spark/Bronze bootstrap/smoke profiles on `hospital-lake`; the TV3 branch adds a manually-run stream reader profile. `minio-data` persists objects, `iceberg-catalog` persists SQLite metadata, `spark-ivy` caches fixture connectors, and `stream-state` persists the streaming connector cache/checkpoint. The stream profile connects to the Kafka network listener supplied by TV2. |
 
 ---
 
@@ -72,7 +72,7 @@ Legend — **Layer**: Lambda layer the code belongs to (Batch / Speed / Serving 
 
 | Planned file | Content | Wk |
 |---|---|---|
-| `architecture.md` | Implemented local Week 1 topology, versions, persistence and reproducible gate; later batch/stream paths remain planned | 1+ |
+| `architecture.md` | Lambda batch/speed/serving topology, component status, current Bronze/Silver/stream paths, repository map, and planned Kubernetes deployment; distinguishes runnable pieces from pending integration gates | 1–6 |
 | `data-model.md` | Implemented six-entity source contracts, migration, raw defect semantics and local 10k/100k measurements; Bronze/Silver/Gold integration remains pending | 1–3 |
 | `demo-script.md` | Exact demo commands (`plan.md` §28) | 9 |
 | `benchmark.md` | Raw measurements + interpretation | 8 |
