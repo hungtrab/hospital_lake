@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 import importlib.util
+from time import monotonic, sleep
 import unittest
 
 
@@ -89,19 +90,42 @@ class KafkaReaderTests(unittest.TestCase):
         result = deduplicate_events(frame)
         self.assertEqual([row.event_id for row in result.collect()], ["same"])
 
-    def test_streaming_dedup_attaches_watermark_state(self):
+    def test_streaming_dedup_uses_watermark_aware_state_eviction(self):
         from spark.streaming.kafka_reader import deduplicate_events
 
-        rate = self.spark.readStream.format("rate").option("rowsPerSecond", 1).load()
+        rate = self.spark.readStream.format("rate").option("rowsPerSecond", 10).load()
         events = rate.selectExpr(
             "cast(value as string) as event_id",
             "timestamp as event_time",
             "cast(null as string) as validation_error",
         )
 
-        result = deduplicate_events(events, watermark_delay="10 minutes")
+        result = deduplicate_events(events, watermark_delay="2 seconds")
         self.assertTrue(result.isStreaming)
-        self.assertIn("EventTimeWatermark", result._jdf.logicalPlan().toString())
+        plan = result._jdf.logicalPlan().toString()
+        self.assertIn("EventTimeWatermark", plan)
+        self.assertIn("DeduplicateWithinWatermark", plan)
+
+        query = (result.writeStream.format("memory")
+                 .queryName("kafka_reader_watermark_eviction_test")
+                 .outputMode("append")
+                 .trigger(processingTime="250 milliseconds")
+                 .start())
+        try:
+            deadline = monotonic() + 20
+            rows_removed = 0
+            while monotonic() < deadline and rows_removed == 0:
+                progress = query.lastProgress
+                if progress is not None:
+                    rows_removed = max(
+                        (operator.numRowsRemoved for operator in progress.stateOperators),
+                        default=0,
+                    )
+                if rows_removed == 0:
+                    sleep(0.25)
+            self.assertGreater(rows_removed, 0, "watermark did not evict dedup state")
+        finally:
+            query.stop()
 
     def test_package_coordinates_match_supported_spark_lines(self):
         from spark.streaming.kafka_reader import kafka_connector_package

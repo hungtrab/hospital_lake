@@ -156,5 +156,6 @@ def deduplicate_events(events, *, watermark_delay: str = "10 minutes"):
 
     valid = events.where(F.col("validation_error").isNull())
     if events.isStreaming:
-        valid = valid.withWatermark("event_time", delay)
+        return (valid.withWatermark("event_time", delay)
+                .dropDuplicatesWithinWatermark(["event_id"]))
     return valid.dropDuplicates(["event_id"])
