@@ -224,7 +224,7 @@ A matching row count alone does not prove all field values. TV2's
 
 ### TV4 local Trino deployment
 
-`docker-compose.yml` on `main` provisions **MinIO, Iceberg REST Catalog and Trino**. The TV3 stream branch adds an opt-in Spark reader profile. Trino uses image
+`docker-compose.yml` provisions **MinIO, Iceberg REST Catalog and Trino**, plus opt-in Kafka (`kafka` profile) and Spark stream reader (`stream` profile) services. Trino uses image
 `trinodb/trino:483` and mounts the Iceberg REST/S3 catalog in `infra/docker/trino/`, uses a 1 GiB JVM
 heap within a 2 GiB container limit, and publishes its port on localhost.
 
@@ -530,8 +530,7 @@ malformed envelopes, retained raw bytes, event-time parsing, duplicate filtering
 and watermark attachment. They do not certify the live Kafka → Spark → Iceberg
 integration gate.
 
-For the Compose Spark 3.5.5 reader, first start the Lakehouse and Kafka services
-(the Kafka target is provided by TV2's integration), then run:
+For the Compose Spark 3.5.5 reader, first start the Lakehouse and Kafka services:
 
 ```bash
 make up
