@@ -107,7 +107,7 @@ T1.1 Silver patients/encounters ──► T2.1 Silver clinical ──► T4.1 Go
 T2.2 Kafka local ──► T3.2 stream-bronze-docker ──► T1.3 producer (live test)
 ```
 
-Week 4 gate đầy đủ (1000 events/s chạy 10 phút) **hoãn sang sau checkpoint**; checkpoint chỉ cần luồng stream chạy được (điểm cộng).
+Week 4 gate đầy đủ (1000 events/s chạy 10 phút): **đã PASS ngày 25/10** bằng `make stream-gate` (600.000 message vào Bronze đúng một lần; reader `local[1]` ≈950 event/s, lag về 0 sau 103 s khi producer dừng).
 
 Nếu T2.1 trễ: T4 vẫn test Gold bằng fixture; TV1 sẽ nhận phần `bed_events` để không chặn Gold (`AGENTS.md` §7 — task bị block).
 

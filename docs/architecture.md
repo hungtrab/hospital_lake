@@ -50,7 +50,7 @@ integration gate has passed.
 | Event simulator | Speed input | Envelope events keyed by patient ID, with configurable defects | Implemented: `make produce-dry-run`; `make produce KAFKA_BOOTSTRAP_SERVERS=localhost:9092` publishes to the local broker. |
 | Kafka broker/topics | Speed transport | `hospital.events` and `hospital.dlq` | Implemented: single-node KRaft broker (Compose profile `kafka`): `make kafka-up` creates both topics; `make kafka-smoke`, `make kafka-recovery`. |
 | Spark Kafka reader | Speed processing | Decode/validate envelopes, preserve invalid events for quarantine, provide event-time dedup with a 10-minute default watermark | Reader code and local Spark unit tests exist. Host entry point: `make stream-bronze` with Kafka and Iceberg reachable. |
-| Stream Bronze/quarantine sink | Shared storage | Persist original Kafka bytes by topic/partition/offset | Idempotent Iceberg sink and integration tests exist. Compose entry point: `make stream-bronze-docker` (after `make up` and `make kafka-up`). Live runs at 10–20 events/s reached raw Bronze and quarantine; after killing and restarting the reader, Kafka offsets in Bronze were contiguous with no gaps or duplicates. The Week 4 throughput gate (1000 events/s for 10 minutes) has not been run. |
+| Stream Bronze/quarantine sink | Shared storage | Persist original Kafka bytes by topic/partition/offset | Idempotent Iceberg sink and integration tests exist. Compose entry point: `make stream-bronze-docker` (after `make up` and `make kafka-up`). Live runs at 10–20 events/s reached raw Bronze and quarantine; after killing and restarting the reader, Kafka offsets in Bronze were contiguous with no gaps or duplicates. `make stream-gate` (1000 events/s for 10 minutes, 25/10) passed: all 600,000 Kafka messages reached Bronze exactly once; the single-core reader (`local[1]`) sustained about 950 events/s, so lag oscillated between 20k and 72k messages and cleared 103 s after the producer stopped. |
 | ClickHouse + realtime aggregates | Serving | Low-latency realtime metrics | Planned; no current runnable path. |
 | Grafana dashboards | Visualization | Hospital overview, realtime operations, historical analytics | Planned; dashboard outputs must be backed by implemented serving tables. |
 | Kubernetes, Spark Operator, Strimzi, Prometheus | Infrastructure | Deployment, persistence, scaling, recovery, observability | Planned for the later Kubernetes/observability milestones; no current cluster deployment is claimed. |
@@ -98,7 +98,11 @@ internal Kafka address (`STREAM_KAFKA_BOOTSTRAP_SERVERS`, default
 checkpoint data. Start Kafka and the Lakehouse services first, then run
 `make stream-bronze-docker`. `make stream-bronze-probe` checks that Bronze grows
 for five minutes without duplicate Kafka coordinates; this and a reader
-kill/restart check passed locally at 10–20 events/s.
+kill/restart check passed locally at 10–20 events/s. `make stream-gate`
+(`scripts/stream_gate.py`) is the Week 4 gate: it runs the producer at
+`GATE_RATE` for `GATE_DURATION` seconds, samples Kafka and Bronze, and passes
+only if every offset produced during the run is in Bronze exactly once after
+the reader catches up; the summary goes to `results/stream-gate.json`.
 
 ## Repository map
 

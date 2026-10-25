@@ -77,9 +77,11 @@ Ad-hoc: `docker compose exec trino trino` then e.g.
 `make produce RATE=100 DURATION=10` sends 1000 events including intentional
 late/duplicate/invalid ones (counted in its progress log) and exits 0;
 any failed delivery is logged as `delivery_failures` and exits 1. The Kafka →
-Structured Streaming → Bronze reader in Compose is TV3's PR #17 and is shown
-only once merged. The Week 4 throughput gate (1000 events/s for 10 min) is not
-claimed yet.
+Structured Streaming → Bronze reader runs with `make stream-bronze-docker`;
+`make stream-gate` is the Week 4 gate (1000 events/s for 10 minutes; measured
+25/10: 600,000 messages in Bronze exactly once, lag cleared 103 s after the
+producer stopped). It takes about 12 minutes, so show its saved summary
+(`results/stream-gate.json`) rather than running it live.
 
 ### 6. Tests — `make test`
 
