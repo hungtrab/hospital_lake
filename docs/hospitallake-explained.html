@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Giải thích HospitalLake bằng tiếng Việt: dữ liệu bệnh viện là gì, vì sao cần hai cách xử lý và từng công nghệ làm công việc gì.">
+  <title>Hiểu HospitalLake từ đầu — một lượt nhập viện đi đâu?</title>
+  <style>
+    :root{--ink:#14213d;--muted:#526171;--accent:#0f766e;--soft:#eaf5f3;--paper:#fff;--line:#d7e1e5;--wash:#f5f7f8;--warn:#843b16;--warm:#fff4eb}
+    *{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:28px}
+    body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.75 system-ui,-apple-system,"Segoe UI",sans-serif}
+    a{color:var(--accent);text-underline-offset:4px}a:hover{text-decoration-thickness:2px}
+    button,input{font:inherit}button{cursor:pointer}button:disabled{cursor:default;opacity:.55}
+    :focus-visible{outline:3px solid var(--accent);outline-offset:4px}
+    .skip{position:absolute;top:-100px;left:16px;background:#fff;padding:12px;z-index:10}.skip:focus{top:8px}
+    .shell{max-width:1440px;margin:auto;display:grid;grid-template-columns:250px minmax(0,1fr);gap:64px;padding:0 48px}
+    aside{position:sticky;top:0;height:100vh;padding:42px 0;overflow:auto;border-right:1px solid var(--line)}
+    .brand{font-weight:800;font-size:24px;letter-spacing:-1px}.brand span{color:var(--accent)}
+    .edition{font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin:4px 0 28px}
+    nav a{display:block;padding:8px 10px 8px 0;text-decoration:none;color:var(--muted);font-size:14px;line-height:1.5}
+    nav a.active{color:var(--accent);font-weight:750}nav .n{display:inline-block;width:28px;color:var(--accent);font-size:12px}
+    .aside-note{font-size:12px;line-height:1.6;color:var(--muted);margin-top:28px;max-width:195px}
+    main{min-width:0;padding-bottom:70px}.hero{padding:76px 0 64px;border-bottom:1px solid var(--line)}
+    .eyebrow{font-size:12px;letter-spacing:1.6px;text-transform:uppercase;font-weight:800;color:var(--accent);margin:0 0 20px}
+    h1{font-size:clamp(38px,4.5vw,66px);letter-spacing:-2.7px;line-height:1.13;max-width:820px;margin:0 0 28px}
+    h2{font-size:clamp(27px,3vw,39px);line-height:1.25;letter-spacing:-1.1px;margin:8px 0 24px}
+    h3{font-size:21px;line-height:1.35;margin:0 0 12px}p{margin:0 0 18px}.lead{font-size:22px;line-height:1.65;max-width:750px}
+    .muted,.caption{color:var(--muted)}.caption{font-size:13px;line-height:1.65;margin:12px 0}.tag{display:inline-block;font-size:12px;font-weight:700;padding:4px 10px;background:var(--soft);color:var(--accent);border-radius:4px}
+    .tag.plan{background:var(--wash);color:var(--muted);border:1px dashed var(--muted)}
+    section{padding:55px 0;border-bottom:1px solid var(--line)}.section-no{font-size:12px;font-weight:800;letter-spacing:2px;color:var(--accent)}
+    .statement{border-left:4px solid var(--accent);background:var(--soft);padding:22px 26px;margin:26px 0;font-size:20px;line-height:1.6}
+    .two-col{display:grid;grid-template-columns:1.2fr 1fr;gap:30px;margin:26px 0}.pane{background:var(--wash);padding:25px;border-radius:8px}
+    .pane p:last-child{margin-bottom:0}.when{font-size:12px;font-weight:800;letter-spacing:1px;color:var(--accent);margin-bottom:12px}
+    .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:8px;margin:22px 0}
+    table{border-collapse:collapse;width:100%;font-size:15px;text-align:left}caption{text-align:left;padding:14px 18px;font-weight:750;background:var(--soft)}
+    th{font-size:12px;text-transform:uppercase;letter-spacing:.5px;background:var(--wash);color:var(--muted)}th,td{padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:0}
+    td strong{font-weight:750}code{font:0.87em/1.6 ui-monospace,"Cascadia Code",Consolas,monospace;overflow-wrap:anywhere;background:var(--wash);padding:2px 5px;border-radius:3px}
+    pre{margin:14px 0;overflow:auto;background:var(--ink);color:#fff;padding:20px 24px;border-radius:8px;font:14px/1.8 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}pre code{padding:0;background:transparent;color:inherit}
+    .journey{border-left:2px solid var(--line);padding-left:25px;margin:24px 0}.journey p{position:relative}.journey p:before{content:"";position:absolute;left:-32px;top:10px;width:12px;height:12px;border-radius:50%;background:var(--accent)}
+    .key{color:var(--accent);font-weight:750}.controls{display:flex;flex-wrap:wrap;gap:9px;margin:20px 0}
+    button{border:1px solid var(--line);border-radius:6px;background:white;color:var(--ink);padding:10px 16px;font-size:14px;font-weight:650;min-height:44px}
+    button:hover{border-color:var(--accent)}button[aria-selected="true"],button[aria-pressed="true"],.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+    .demo{border:1px solid var(--line);border-radius:10px;padding:26px;margin:28px 0}.demo .table-wrap{margin:16px 0}.demo-label{font-size:12px;text-transform:uppercase;font-weight:800;letter-spacing:1px;color:var(--accent)}
+    .stage-title{font-size:23px;margin:20px 0 8px;font-weight:750}.demo-note{font-size:14px;color:var(--muted);margin:0 0 12px}
+    .bad{color:var(--warn);background:var(--warm)}.duplicate{color:var(--muted);background:var(--wash)}.ok{color:var(--accent);font-weight:700}
+    .accounting{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;background:var(--soft);padding:22px;margin:22px 0}.accounting strong{font-size:30px;line-height:1.2}.accounting span{font-size:14px}
+    .arch{background:var(--wash);padding:25px;border-radius:10px;margin:25px 0}.lane-title{font-size:12px;letter-spacing:1px;font-weight:800;margin:0 0 10px;color:var(--accent)}
+    .lane{display:flex;align-items:stretch;gap:6px;margin-bottom:24px}.node{flex:1;min-width:0;background:white;border:1px solid var(--line);font-size:13px;font-weight:600;padding:14px 8px;line-height:1.5;text-align:center}.node b{display:block;font-size:15px}.arrow{align-self:center;font-size:19px;color:var(--muted)}
+    .storage{border:1px solid var(--accent);background:var(--soft);padding:17px 20px;font-size:15px}.future{border:1px dashed var(--muted);padding:17px 20px;margin-top:14px;font-size:14px}.future p:last-child{margin-bottom:0}
+    .node-detail{border-top:1px solid var(--line);margin-top:18px;padding-top:18px;min-height:130px}.node-detail p{font-size:15px;margin-bottom:8px}
+    .status-row{display:grid;grid-template-columns:140px 1fr;gap:18px;border-bottom:1px solid var(--line);padding:18px 0}.status-row:last-child{border-bottom:0}.status-row p{margin:0}.status-row .tag{align-self:start;justify-self:start}
+    .warning{background:var(--warm);border-left:4px solid var(--warn);padding:20px 24px;margin:24px 0}.warning strong{color:var(--warn)}
+    .glossary-search{display:block;width:100%;max-width:540px;padding:13px 16px;border:1px solid var(--line);border-radius:6px;margin:12px 0 20px;background:white;color:var(--ink)}
+    details{border-bottom:1px solid var(--line);padding:15px 0}summary{cursor:pointer;font-size:17px;font-weight:750}details p{font-size:15px;margin:14px 0 6px;max-width:720px}
+    .speak{font-size:19px;line-height:1.8;margin:26px 0;padding:24px 28px;background:var(--soft)}.step{display:grid;grid-template-columns:36px 1fr;gap:10px;margin:25px 0}.step-number{font-size:22px;color:var(--accent);font-weight:800}.step p{margin:4px 0 12px}
+    footer{font-size:13px;color:var(--muted);padding:28px 0}.source-list{font-size:15px;padding-left:22px}.source-list li{margin:8px 0}
+    [hidden]{display:none!important}
+    @media(max-width:1100px){.shell{grid-template-columns:190px minmax(0,1fr);gap:32px;padding:0 28px}.two-col{grid-template-columns:1fr}.node{font-size:12px}.node b{font-size:13px}.lane{gap:4px}}
+    @media(max-width:760px){.shell{display:block;padding:0 20px}aside{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:20px 0}nav{display:flex;overflow:auto;gap:15px;margin-top:15px}nav a{white-space:nowrap;padding:6px 0;font-size:12px}.edition{margin:0}.aside-note{display:none}.hero{padding:38px 0}.lead{font-size:19px}section{padding:36px 0}.demo,.arch{padding:16px}.lane{flex-direction:column}.arrow{transform:rotate(90deg);line-height:1}.node{text-align:left;padding:10px 14px}.node b{display:inline;font-size:15px;margin-right:8px}.status-row{grid-template-columns:1fr;gap:8px}th,td{padding:10px;font-size:13px}.statement{padding:18px;font-size:18px}h1{letter-spacing:-1.8px}.speak{padding:18px;font-size:17px}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+    @media print{aside,.controls,.glossary-search,.skip,.print-hide{display:none!important}.shell{display:block;padding:0}body{font-size:11pt}.hero,section{padding:18px 0;break-inside:auto}h1{font-size:30pt}h2{font-size:21pt}h3{font-size:15pt}.pane,.statement,.arch,.demo,details{break-inside:avoid}.lane{flex-direction:row}.arrow{transform:none}.node-detail{min-height:0}pre{color:#14213d;background:#f5f7f8}a{color:inherit}.caption{font-size:9pt}}
+  </style>
+</head>
+<body>
+<a class="skip" href="#main">Đi tới nội dung</a>
+<div class="shell">
+  <aside aria-label="Mục lục">
+    <div class="brand">Hospital<span>Lake</span></div>
+    <div class="edition">Hiểu từ đầu · Checkpoint 1</div>
+    <nav aria-label="Các phần giải thích">
+      <a href="#project"><span class="n">01</span>Nhóm đang làm gì?</a>
+      <a href="#data"><span class="n">02</span>Dữ liệu trông thế nào?</a>
+      <a href="#two-speeds"><span class="n">03</span>Vì sao có hai nhánh?</a>
+      <a href="#layers"><span class="n">04</span>Gốc → sạch → tổng hợp</a>
+      <a href="#tools"><span class="n">05</span>Mỗi công nghệ làm gì?</a>
+      <a href="#architecture"><span class="n">06</span>Ghép thành hệ thống</a>
+      <a href="#stream"><span class="n">07</span>Thử luồng sự kiện</a>
+      <a href="#progress"><span class="n">08</span>Đã làm được đến đâu?</a>
+      <a href="#present"><span class="n">09</span>Nói và demo với thầy</a>
+      <a href="#glossary"><span class="n">10</span>Tra từ khó</a>
+    </nav>
+    <p class="aside-note">Đọc từ trên xuống. Các ví dụ bấm thử chỉ minh họa cách hoạt động; kết quả chạy thật được ghi riêng ở phần 08.</p>
+  </aside>
+  <main id="main">
+    <header class="hero">
+      <p class="eyebrow">Bản giải thích bằng tiếng Việt · 26/10/2026</p>
+      <h1>Một lượt nhập viện.<br>Đi qua hệ thống thế nào?</h1>
+      <p class="lead">Bắt đầu từ chuyện quen thuộc: bệnh viện có nhiều sổ ghi chép. Nhóm đang làm hệ thống gom những ghi chép đó, kiểm tra chúng, rồi tính ra những con số có ích.</p>
+      <p class="muted">Bạn sẽ hiểu <strong>project là gì, data là gì, kiến trúc là gì</strong> — sau đó mới cần nhớ tên Spark, Kafka hay Iceberg.</p>
+      <a href="#project">Bắt đầu từ vấn đề của bệnh viện ↓</a>
+    </header>
+
+    <section id="project" aria-labelledby="project-title">
+      <div class="section-no">01 / PROJECT LÀ GÌ?</div>
+      <h2 id="project-title">Gom ghi chép rời rạc thành câu trả lời.</h2>
+      <p>Quầy tiếp nhận ghi bệnh nhân vào viện. Phòng xét nghiệm ghi kết quả. Điều dưỡng ghi sinh hiệu và giường bệnh. Những thông tin này liên quan cùng một người, nhưng xuất hiện ở những nơi và thời điểm khác nhau.</p>
+      <div class="two-col">
+        <div class="pane"><h3>Câu hỏi về chuyện đã xảy ra</h3><p>Tháng trước, mỗi khoa tiếp nhận bao nhiêu lượt? Trung bình một lượt nằm viện kéo dài mấy giờ? Xét nghiệm nào có nhiều kết quả ngoài khoảng tham chiếu?</p></div>
+        <div class="pane"><h3>Câu hỏi về chuyện đang xảy ra</h3><p>Trong 5 phút vừa rồi có thêm bao nhiêu ca nhập viện? Hiện có bao nhiêu người đang ở khoa hồi sức tích cực, thường viết tắt là <strong>ICU</strong>?</p></div>
+      </div>
+      <div class="statement"><strong>HospitalLake</strong> nhận dữ liệu bệnh viện, giữ bản gốc, tạo bản sạch rồi tính số liệu để trả lời các câu hỏi đó.</div>
+      <p><strong>Đó là một project kỹ thuật dữ liệu.</strong> Sản phẩm chính là đường đi có thể chạy lại từ dữ liệu đầu vào đến kết quả phân tích. Ở checkpoint này, kết quả lịch sử được xem qua bảng truy vấn; giao diện biểu đồ trực tiếp sẽ làm sau.</p>
+    </section>
+
+    <section id="data" aria-labelledby="data-title">
+      <div class="section-no">02 / DATA LÀ GÌ?</div>
+      <h2 id="data-title">Một người có thể tạo ra rất nhiều dòng dữ liệu.</h2>
+      <p><strong>Data = các thông tin được ghi lại.</strong> Một <strong>bảng</strong> giống một sheet Excel: mỗi cột là một thuộc tính, mỗi dòng là một bản ghi. “6 thực thể” chỉ có nghĩa là 6 loại sự vật hoặc hoạt động cần ghi chép.</p>
+      <div class="table-wrap"><table>
+        <caption>6 loại dữ liệu mà generator của nhóm tạo ra</caption>
+        <thead><tr><th scope="col">Tên trong code</th><th scope="col">Hiểu bằng tiếng Việt</th><th scope="col">Ví dụ thông tin</th></tr></thead>
+        <tbody>
+          <tr><td><code>patients</code></td><td>Bệnh nhân</td><td>Mã bệnh nhân, năm sinh, giới tính, thành phố.</td></tr>
+          <tr><td><code>encounters</code></td><td>Lượt khám / nhập viện</td><td>Mã lượt, khoa, giờ vào, giờ ra. Một người có thể có nhiều lượt.</td></tr>
+          <tr><td><code>lab_results</code></td><td>Kết quả xét nghiệm</td><td>Tên xét nghiệm, giá trị, đơn vị, khoảng tham chiếu, thời điểm đo.</td></tr>
+          <tr><td><code>medications</code></td><td>Y lệnh thuốc</td><td>Tên thuốc, liều, đường dùng, thời gian bắt đầu / kết thúc.</td></tr>
+          <tr><td><code>vitals</code></td><td>Lần đo sinh hiệu</td><td>Nhịp tim, độ bão hòa oxy, huyết áp, nhiệt độ.</td></tr>
+          <tr><td><code>bed_events</code></td><td>Thay đổi giường bệnh</td><td>Gán giường, chuyển giường, trả giường và thời điểm xảy ra.</td></tr>
+        </tbody>
+      </table></div>
+      <h3>Vì sao cần mã bệnh nhân và mã lượt?</h3>
+      <div class="journey">
+        <p><span class="key">P001</span> là mã một bệnh nhân giả lập.</p>
+        <p><span class="key">E001</span> là một lần P001 nhập viện. Lần quay lại khác sẽ có mã lượt khác.</p>
+        <p>Một xét nghiệm ghi cả <code>patient_id = P001</code> và <code>encounter_id = E001</code>, nên biết kết quả thuộc <strong>người nào, trong lượt nào</strong>.</p>
+      </div>
+      <p class="caption">P001 / E001 là mã rút gọn để dễ đọc. Generator thật dùng mã dài hơn, như P00000001 / E000000001.</p>
+      <h3>Dữ liệu này lấy ở đâu?</h3>
+      <p>Do chương trình của nhóm tự sinh ra, gọi là <strong>synthetic data = dữ liệu giả lập</strong>. Đây không phải hồ sơ bệnh nhân thật. Chương trình tạo các bảng có liên hệ hợp lý và cố ý thêm vài dòng trùng hoặc lỗi để thử hệ thống.</p>
+      <p><strong>Generator</strong> là chương trình tạo dữ liệu. <strong>Seed</strong> là số khởi tạo việc chọn ngẫu nhiên: giữ cùng seed và cấu hình thì tạo lại được cùng dữ liệu. <strong>Parquet</strong> là định dạng file lưu bảng theo cột, phù hợp cho các phép đọc và tổng hợp dữ liệu.</p>
+      <pre><code>make generate-data PATIENTS=1000 SEED=42</code></pre>
+      <p class="caption">Lệnh này tạo 6 file Parquet và <code>_manifest.json</code> trong <code>data/generated/</code>. Manifest là bản kê số dòng và các lỗi đã cài vào dữ liệu.</p>
+    </section>
+
+    <section id="two-speeds" aria-labelledby="speed-title">
+      <div class="section-no">03 / VÌ SAO CÓ HAI NHÁNH?</div>
+      <h2 id="speed-title">Tổng kết cả tháng khác với theo dõi 5 phút vừa rồi.</h2>
+      <div class="two-col">
+        <article class="pane"><div class="when">GOM MỘT TẬP RỒI XỬ LÝ</div><h3>Batch = xử lý theo lô</h3><p>Ví dụ: đã có file chứa nhiều lượt nhập viện trong các tháng trước. Đọc cả tập, kiểm tra rồi tính số lượt theo ngày hoặc thời gian nằm viện theo khoa.</p><p><strong>Ưu tiên:</strong> tính đầy đủ, có thể tính lại từ dữ liệu gốc.</p></article>
+        <article class="pane"><div class="when">NHẬN LIÊN TỤC KHI CÓ VIỆC MỚI</div><h3>Stream = xử lý dòng sự kiện</h3><p>Ví dụ: vừa có một ca nhập viện thì nhận thông báo “ADMISSION lúc 08:05”. Chương trình tiếp tục nhận và xử lý các đợt nhỏ, thay vì đợi file tổng kết cuối tháng.</p><p><strong>Ưu tiên:</strong> cập nhật sớm thông tin mới.</p></article>
+      </div>
+      <p><strong>Event = một thông báo rằng có việc vừa xảy ra.</strong> Event thường ghi mã sự kiện, loại việc, thời gian và nội dung. Ví dụ: “Sự kiện A001: P001 nhập viện trong lượt E001 lúc 08:05 UTC”. UTC là múi giờ chuẩn chung để tránh nhầm thời gian giữa các máy.</p>
+      <div class="statement"><strong>Lambda Architecture</strong> là cách tổ chức hai nhánh này: một nhánh tính dữ liệu lịch sử, một nhánh xử lý thông tin mới liên tục, rồi có lớp phục vụ để người dùng xem kết quả.</div>
+      <p>Trong thiết kế đầy đủ, nhánh lịch sử trả kết quả qua Trino; nhánh trực tiếp sẽ trả chỉ số qua ClickHouse. Ở checkpoint hiện tại, nhánh trực tiếp mới chạy đến lưu sự kiện vào Lakehouse.</p>
+    </section>
+
+    <section id="layers" aria-labelledby="layers-title">
+      <div class="section-no">04 / BRONZE, SILVER, GOLD LÀ GÌ?</div>
+      <h2 id="layers-title">Bản gốc → bản sạch → bảng tổng hợp.</h2>
+      <p>Đây là tên cho <strong>ba mức dữ liệu</strong>, không phải ba phần mềm. Giữ chúng riêng giúp kiểm tra lỗi và tính lại khi cách xử lý thay đổi.</p>
+      <div class="demo" aria-label="Minh họa ba lớp dữ liệu">
+        <div class="demo-label">Bấm thử · bộ ví dụ 5 dòng</div>
+        <p class="demo-note">Chỉ là minh họa trong trình duyệt, không chạy Spark hoặc đọc dữ liệu thật. Giả sử danh sách bệnh nhân có P001, P002, P003.</p>
+        <div class="controls" role="tablist" aria-label="Chọn lớp dữ liệu">
+          <button id="tab-bronze" role="tab" aria-selected="true" aria-controls="layer-panel" data-layer="bronze">1. Bronze · giữ gốc</button>
+          <button id="tab-silver" role="tab" aria-selected="false" aria-controls="layer-panel" tabindex="-1" data-layer="silver">2. Silver · kiểm tra</button>
+          <button id="tab-gold" role="tab" aria-selected="false" aria-controls="layer-panel" tabindex="-1" data-layer="gold">3. Gold · tổng hợp</button>
+        </div>
+        <div id="layer-panel" role="tabpanel" tabindex="0" aria-labelledby="tab-bronze">
+          <div id="layer-title" class="stage-title">Bronze giữ nguyên cả 5 dòng.</div>
+          <p id="layer-description">Giữ cả tên khoa ER, dòng trùng và dòng sai để sau này kiểm tra lại. Khi nhập vào kho, hệ thống ghi thêm nguồn và thời điểm nhận.</p>
+          <div id="layer-table" class="table-wrap"></div>
+          <p id="layer-explanation" class="demo-note"></p>
+        </div>
+        <noscript><p>Bronze có 5 dòng: E001 lặp hai lần; E002 hợp lệ; E003 có giờ ra trước giờ vào; E004 tham chiếu P999 không tồn tại. Silver còn 2 dòng hợp lệ, tách 2 dòng lỗi và gộp 1 bản sao. Gold đếm được 1 lượt EMERGENCY và 1 lượt ICU.</p></noscript>
+      </div>
+      <h3>Dòng lỗi được đưa đi đâu?</h3>
+      <p><strong>Quarantine = khu giữ riêng dữ liệu lỗi.</strong> Ví dụ “ra viện trước nhập viện” được giữ kèm lý do để tra lại. Dòng đó vẫn ở Bronze; nó không được dùng làm một lượt hợp lệ trong Silver. Bản sao giống hệt được gộp để tránh đếm hai lần.</p>
+      <p>Trong bộ chạy thật 1.000 bệnh nhân, riêng bảng lượt khám / nhập viện có:</p>
+      <div class="accounting" aria-label="3094 dòng nguồn bằng 3058 dòng hợp lệ cộng 31 bản sao cộng 5 dòng lỗi">
+        <div><strong>3.094</strong><br><span>dòng nguồn</span></div><span>=</span>
+        <div><strong>3.058</strong><br><span>lượt hợp lệ</span></div><span>+</span>
+        <div><strong>31</strong><br><span>bản sao được gộp</span></div><span>+</span>
+        <div><strong>5</strong><br><span>dòng lỗi giữ riêng</span></div>
+      </div>
+      <p class="caption">Số đo 25/10/2026, nguồn: <a href="demo-script.md">docs/demo-script.md</a> và <a href="slides/checkpoint-1.tex">slide checkpoint hiện có</a>. Đây là kết quả bộ mặc định, không phải kết quả của ví dụ 5 dòng phía trên.</p>
+    </section>
+
+    <section id="tools" aria-labelledby="tools-title">
+      <div class="section-no">05 / MỖI CÔNG NGHỆ LÀM GÌ?</div>
+      <h2 id="tools-title">Phân biệt chỗ giữ dữ liệu, người xử lý và người trả lời.</h2>
+      <div class="table-wrap"><table>
+        <caption>Các thành phần đang có đường chạy ở checkpoint</caption>
+        <thead><tr><th scope="col">Tên</th><th scope="col">Công việc thật</th><th scope="col">Hình dung đơn giản</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Spark</strong></td><td>Đọc dữ liệu, kiểm tra, chuẩn hóa, gộp bản sao và tính tổng hợp. Cùng họ công cụ có Structured Streaming để xử lý các đợt sự kiện liên tục.</td><td>Đội xử lý: nhận sổ, sửa cách ghi và làm phép tính.</td></tr>
+          <tr><td><strong>MinIO</strong></td><td>Lưu các đối tượng như file dữ liệu và file mô tả bảng. Các công cụ đọc / ghi qua giao diện tương thích S3.</td><td>Kho giữ các tập tài liệu. S3 là cách các công cụ giao tiếp với kho.</td></tr>
+          <tr><td><strong>Iceberg</strong></td><td>Định dạng bảng cùng thông tin quản lý file, cột và các phiên bản bảng. Spark và Trino dựa vào đó để hiểu nhiều file như một bảng có tổ chức.</td><td>Cách tổ chức hồ sơ và danh mục: bảng nào gồm những file nào.</td></tr>
+          <tr><td><strong>Iceberg REST Catalog</strong></td><td>Cho công cụ tìm bảng bằng tên và tìm tới metadata hiện hành của bảng.</td><td>Quầy tra cứu: hỏi “silver.encounters ở đâu?” rồi nhận chỉ dẫn tới bảng.</td></tr>
+          <tr><td><strong>Trino</strong></td><td>Nhận câu hỏi viết bằng SQL, đọc bảng Iceberg rồi trả các dòng kết quả.</td><td>Người tra sổ và trả lời: “mỗi khoa có bao nhiêu lượt?”.</td></tr>
+          <tr><td><strong>Kafka</strong></td><td>Nhận và lưu dòng thông báo để chương trình xử lý đọc theo vị trí. Producer là bên gửi; consumer là bên đọc.</td><td>Sổ giao nhận có đánh số: người gửi ghi vào, người đọc biết đã đọc đến đâu.</td></tr>
+          <tr><td><strong>Docker Compose</strong></td><td>Khởi chạy các dịch vụ local bằng cấu hình chung trong repo.</td><td>Bản hướng dẫn dựng cả bộ dụng cụ bằng một lệnh.</td></tr>
+        </tbody>
+      </table></div>
+      <p><strong>Data Lakehouse</strong> là tên cách lưu dữ liệu kết hợp kho file và cơ chế quản lý bảng để phục vụ phân tích. Trong project này: MinIO giữ file, Iceberg quản lý cấu trúc bảng trên những file đó. Bronze, Silver, Gold đều nằm trong Lakehouse, không phải chuyển lần lượt qua ba ổ đĩa.</p>
+      <p><strong>SQL</strong> là ngôn ngữ đặt câu hỏi với bảng. Ví dụ này đếm số lượt theo khoa từ dữ liệu sạch:</p>
+      <pre><code>SELECT department, count(*) AS visits
+FROM iceberg.silver.encounters
+GROUP BY department;</code></pre>
+      <p class="caption"><code>department</code> = khoa; <code>count(*)</code> = đếm dòng; <code>GROUP BY</code> = nhóm theo. Chạy câu hỏi này bằng Trino, không phải bằng MinIO.</p>
+    </section>
+
+    <section id="architecture" aria-labelledby="arch-title">
+      <div class="section-no">06 / SYSTEM ARCHITECTURE LÀ GÌ?</div>
+      <h2 id="arch-title">Kiến trúc là bản đồ ai làm gì, dữ liệu đi đâu.</h2>
+      <p>Đọc sơ đồ từ trái sang phải. Mũi tên biểu diễn luồng dữ liệu / công việc; các lớp Bronze, Silver, Gold là bảng lưu chung trên MinIO + Iceberg. Bấm một ô để xem ý nghĩa và chỗ tương ứng trong code.</p>
+      <div class="arch">
+        <p class="lane-title">A / NHÁNH LỊCH SỬ — ĐÃ CHẠY TỪ ĐẦU ĐẾN TRUY VẤN</p>
+        <div class="lane" aria-label="Luồng batch">
+          <button class="node" data-node="files" aria-pressed="false"><b>File Parquet</b>dữ liệu nguồn</button><span class="arrow" aria-hidden="true">→</span>
+          <button class="node" data-node="spark" aria-pressed="false"><b>Spark</b>nhập vào kho</button><span class="arrow" aria-hidden="true">→</span>
+          <button class="node" data-node="layers" aria-pressed="false"><b>3 lớp bảng</b>gốc → sạch → tổng hợp</button><span class="arrow" aria-hidden="true">→</span>
+          <button class="node" data-node="trino" aria-pressed="false"><b>Trino</b>hỏi bằng SQL</button>
+        </div>
+        <p class="lane-title">B / NHÁNH SỰ KIỆN MỚI — HIỆN CHẠY ĐẾN BẢNG BRONZE</p>
+        <div class="lane" aria-label="Luồng streaming">
+          <button class="node" data-node="simulator" aria-pressed="false"><b>Simulator</b>giả lập hoạt động</button><span class="arrow" aria-hidden="true">→</span>
+          <button class="node" data-node="kafka" aria-pressed="false"><b>Kafka</b>giữ thông báo</button><span class="arrow" aria-hidden="true">→</span>
+          <button class="node" data-node="streaming" aria-pressed="false"><b>Spark Streaming</b>đọc và kiểm tra</button><span class="arrow" aria-hidden="true">→</span>
+          <button class="node" data-node="streambronze" aria-pressed="false"><b>Bronze stream</b>bản gốc / khu lỗi</button>
+        </div>
+        <div class="storage"><strong>Nơi lưu chung: MinIO + Iceberg.</strong> Nhánh A có bảng Bronze / Silver / Gold; nhánh B hiện có hai bảng lưu sự kiện gốc và sự kiện lỗi.</div>
+        <div class="future"><span class="tag plan">Kế hoạch</span><p>Nhánh streaming sẽ tính các chỉ số mới, ghi vào <strong>ClickHouse</strong> để đọc nhanh. <strong>Grafana</strong> sẽ vẽ biểu đồ từ Trino và ClickHouse.</p><p><strong>Kubernetes</strong> sẽ điều phối dịch vụ trên cụm máy; Spark Operator / Strimzi quản lý Spark / Kafka; <strong>Prometheus</strong> thu số đo hoạt động. Các phần này chưa có luồng chạy hoàn chỉnh ở checkpoint.</p></div>
+        <div id="node-detail" class="node-detail" aria-live="polite"><h3>Chọn một ô trong sơ đồ.</h3><p>Bạn sẽ thấy đầu vào, công việc và đầu ra của thành phần đó.</p></div>
+      </div>
+      <p><strong>Vì sao môn Big Data cần cách chia này?</strong> Khi dữ liệu lớn hoặc đến liên tục, cần tổ chức việc lưu, xử lý lại, đọc song song và phục hồi khi lỗi. Spark có khả năng chia việc ra nhiều máy; checkpoint hiện chạy local, chưa chứng minh tăng tốc bằng một cụm nhiều máy.</p>
+    </section>
+
+    <section id="stream" aria-labelledby="stream-title">
+      <div class="section-no">07 / THỬ HIỂU DÒNG SỰ KIỆN</div>
+      <h2 id="stream-title">Gửi nhanh hơn đọc thì còn việc đang chờ.</h2>
+      <p><strong>Lag = số thông báo phía sau chưa xử lý tới.</strong> Kafka và chương trình xử lý là hai thành phần riêng: việc nhận thêm thông báo không có nghĩa là mọi thông báo đã được ghi vào Iceberg ngay lập tức.</p>
+      <div class="demo" aria-label="Mô hình hàng chờ streaming">
+        <div class="demo-label">Mô hình học khái niệm · không nối với hệ thống thật</div>
+        <p class="demo-note">Mỗi nút gửi thêm một thông báo. Nút xử lý đọc đúng một thông báo đang chờ. Quy tắc ở đây được đơn giản hóa để hiểu hàng chờ và quarantine.</p>
+        <div class="controls">
+          <button id="send-valid" class="primary">Gửi ca nhập viện hợp lệ</button>
+          <button id="send-invalid">Gửi thông báo lỗi</button>
+          <button id="process-one">Xử lý 1 thông báo</button>
+          <button id="reset-stream">Làm lại</button>
+        </div>
+        <div id="stream-counts" class="accounting" aria-live="polite"></div>
+        <p id="stream-log" role="status">Chưa gửi thông báo nào. Thử gửi 3 lần rồi xử lý 1 lần.</p>
+      </div>
+      <p><strong>Checkpoint của Spark</strong> là trạng thái tiến độ được lưu để chương trình có thể tiếp tục khi khởi động lại. Nó khác với “Checkpoint 1” của môn học, tức buổi báo cáo tiến độ.</p>
+      <p><strong>Trùng sự kiện cũng có hai nghĩa:</strong> cùng một thông báo có thể được gửi hai lần ở hai vị trí Kafka khác nhau; Bronze giữ cả hai bản gốc. Xử lý lại cùng một vị trí Kafka thì sink hiện tại tránh ghi lặp vị trí đó. Việc gộp theo mã sự kiện là một bước riêng cho dữ liệu hợp lệ dùng ở phía sau.</p>
+    </section>
+
+    <section id="progress" aria-labelledby="progress-title">
+      <div class="section-no">08 / ĐÃ LÀM ĐƯỢC ĐẾN ĐÂU?</div>
+      <h2 id="progress-title">Có đường chạy và kết quả thật cho checkpoint đầu tiên.</h2>
+      <p>Các số bên dưới được ghi nhận ngày <strong>25/10/2026</strong> trong tài liệu / log của repo. Đây là bằng chứng của lần chạy đó, không phải số đo live từ trang HTML này.</p>
+      <div class="status-row"><span class="tag">Data · đã có</span><p>Generator tạo đủ 6 nhóm dữ liệu. Bộ mặc định có 1.000 bệnh nhân, 3.094 lượt khám / nhập viện, 12.839 kết quả xét nghiệm, 6.149 y lệnh thuốc, 9.261 lần đo sinh hiệu và 3.938 sự kiện giường bệnh.</p></div>
+      <div class="status-row"><span class="tag">Batch · đã chạy</span><p><code>make batch</code> chạy từ sinh dữ liệu tới Gold. Bước kiểm tra Bronze đối chiếu số dòng và dấu kiểm tra SHA-256 của ID với nguồn. Silver có đủ 6 nhóm và khu giữ riêng dòng lỗi. Có 4 bảng Gold được tính.</p></div>
+      <div class="status-row"><span class="tag">Query · đã chạy</span><p><code>make query</code> chạy 11 truy vấn có kết quả, gồm số lượt nhập viện, thời gian nằm viện theo khoa, xét nghiệm, sử dụng ICU và dữ liệu lỗi.</p></div>
+      <div class="status-row"><span class="tag">Stream · đã chạy</span><p>Simulator → Kafka → Spark → Bronze / quarantine. Bài thử 1.000 thông báo/giây trong 10 phút đã ghi đủ 600.000 thông báo vào Bronze sau khi xử lý hết phần chờ; không thiếu / lặp vị trí Kafka trong bài thử đó.</p></div>
+      <div class="status-row"><span class="tag plan">Làm tiếp</span><p>Chỉ số trực tiếp trong ClickHouse, biểu đồ Grafana, triển khai Kubernetes, theo dõi bằng Prometheus và thử mở rộng nhiều máy.</p></div>
+      <div class="warning"><strong>Giới hạn cần hiểu:</strong> trong bài thử, reader một lõi xử lý khoảng 950 thông báo/giây, nên còn hàng chờ khi bên gửi đạt 1.000/giây. Sau bài thử, reader từng bị dừng vì vượt giới hạn bộ nhớ của container (OOM). Vì vậy chưa kết luận stream chạy ổn định lâu dài. Nguyên nhân nghi liên quan cách cập nhật bảng và nhiều file nhỏ, chưa được profile để xác nhận.</div>
+      <p class="caption">Nguồn: <a href="architecture.md">architecture.md</a>, <a href="demo-script.md">demo-script.md</a>, <a href="../results/stream-gate.json">results/stream-gate.json</a> trên máy đã chạy. Thư mục results không được commit, nên clone mới chưa có file kết quả đo.</p>
+    </section>
+
+    <section id="present" aria-labelledby="present-title">
+      <div class="section-no">09 / THẦY MUỐN XEM GÌ?</div>
+      <h2 id="present-title">Chỉ vào bằng chứng, rồi giải thích nó có ý nghĩa gì.</h2>
+      <p>Yêu cầu của thầy có thể chuyển thành ba câu: <strong>code có chạy được không, dữ liệu đã có chưa, các thành phần được nối với nhau thế nào?</strong></p>
+      <div class="step"><div class="step-number">1</div><div><h3>Mở repo và chỉ ra đường chạy</h3><p>Git lưu code và lịch sử thay đổi. Makefile đặt tên ngắn cho các lệnh nhiều bước. “Executable code” nghĩa là thực sự chạy ra kết quả, không chỉ có sơ đồ hoặc file trống.</p><pre><code>make up</code></pre><p class="caption">Khởi động MinIO, catalog và Trino. Cần chuẩn bị Docker Compose, môi trường Python và cấu hình theo <a href="demo-script.md">demo-script.md</a> trước buổi báo cáo.</p></div></div>
+      <div class="step"><div class="step-number">2</div><div><h3>Cho thấy dữ liệu được biến đổi</h3><pre><code>make batch PYTHON=.venv/bin/python PATIENTS=1000 SEED=42</code></pre><p>Chỉ vào file nguồn và log: gốc có 3.094 dòng lượt khám; bản sạch còn 3.058, có 31 bản sao được gộp và 5 dòng lỗi giữ riêng. Giải thích vì sao số dòng thay đổi.</p></div></div>
+      <div class="step"><div class="step-number">3</div><div><h3>Đặt một câu hỏi rồi mở kết quả</h3><pre><code>make query PYTHON=.venv/bin/python</code></pre><p>Ví dụ: “Mỗi khoa có thời gian nằm viện trung bình bao nhiêu?”. Query 7 có kết quả từ dữ liệu sạch. Query 11 cho thấy dữ liệu lỗi còn lý do để truy vết.</p></div></div>
+      <div class="step"><div class="step-number">4</div><div><h3>Chỉ vào sơ đồ và phần sẽ làm tiếp</h3><p>Giải thích hai nhánh lịch sử / sự kiện mới. Stream hiện vào được kho; chỉ số trực tiếp và biểu đồ là bước tiếp theo. Có thể mở kết quả bài thử đã lưu thay vì chạy bài thử dài trên sân khấu.</p></div></div>
+      <p class="caption">Lượt chạy mặc định dùng batch ID ổn định nên chạy lại có thể báo bỏ qua Bronze đã nhập; Silver / Gold được tính lại. Nếu kho có nhiều batch, tổng dòng Bronze có thể lớn hơn bộ ví dụ: đối chiếu theo batch ID. Chuẩn bị jar Spark và chạy thử trước giờ báo cáo; toàn bộ batch có thể mất vài phút.</p>
+      <h3>Một đoạn có thể nói bằng lời của bạn</h3>
+      <div class="speak">“Nhóm em làm hệ thống gom và phân tích dữ liệu bệnh viện. Hiện nhóm đã tạo được sáu loại dữ liệu giả lập. Hệ thống giữ bản gốc, làm sạch rồi tính số liệu tổng hợp; nhóm đã truy vấn được kết quả thật. Nhóm cũng đã đưa thông báo nhập viện từ chương trình giả lập qua Kafka và Spark vào kho. Tiếp theo nhóm sẽ hoàn thiện chỉ số trực tiếp, biểu đồ và triển khai trên cụm máy.”</div>
+      <p><a href="slides/hospitallake-explained.tex">Mã nguồn slide LaTeX Beamer</a> · <a href="../results/slides/hospitallake-explained.pdf">Mở PDF slide sau khi build</a> · Build: <code>make slides-explained</code>.</p>
+    </section>
+
+    <section id="glossary" aria-labelledby="glossary-title">
+      <div class="section-no">10 / TRA NHANH TỪ KHÓ</div>
+      <h2 id="glossary-title">Mỗi từ gắn với một công việc cụ thể.</h2>
+      <label for="term-search">Gõ tên hoặc ý nghĩa muốn tìm</label>
+      <input id="term-search" class="glossary-search" type="search" placeholder="Ví dụ: lưu trữ, Kafka, bản gốc…" autocomplete="off">
+      <p id="search-status" class="caption" role="status"></p>
+      <div id="terms">
+        <details><summary>Pipeline — chuỗi bước xử lý</summary><p>Đầu ra bước trước là đầu vào bước sau. Ví dụ: file nguồn → nhập vào Bronze → làm sạch thành Silver → tính Gold → hỏi bằng Trino.</p></details>
+        <details><summary>Schema — khuôn của bảng / thông báo</summary><p>Quy định cột nào tồn tại và kiểu của nó, như mã lượt là chuỗi, giờ nhập viện là thời gian. Quy tắc “giờ ra phải sau giờ vào” là kiểm tra nghiệp vụ bổ sung.</p></details>
+        <details><summary>ID và foreign key — mã và mã tham chiếu</summary><p>ID nhận diện một bản ghi. Foreign key là mã trỏ tới bản ghi liên quan: encounter_id trên kết quả xét nghiệm chỉ ra lượt khám mà nó thuộc về.</p></details>
+        <details><summary>Synthetic, generator, seed — tạo dữ liệu giả lập</summary><p>Synthetic là dữ liệu được sinh bằng chương trình. Generator là chương trình đó. Seed cùng cấu hình giúp tái tạo lại cùng bộ dữ liệu.</p></details>
+        <details><summary>Parquet — file lưu dữ liệu dạng cột</summary><p>Giữ bảng có kiểu dữ liệu trong file, phù hợp phân tích. File nguồn Parquet chưa tự nó là bảng Iceberg: bảng Iceberg cần thêm metadata và cách quản lý file.</p></details>
+        <details><summary>Batch / stream — xử lý một tập / xử lý liên tục</summary><p>Batch đọc một tập dữ liệu để tính theo đợt. Stream liên tục nhận sự kiện mới và xử lý; Spark Structured Streaming hiện dùng các đợt nhỏ gọi là micro-batch.</p></details>
+        <details><summary>Bronze / Silver / Gold — gốc / sạch / tổng hợp</summary><p>Ba mức dữ liệu. Spark tạo các bảng này; MinIO + Iceberg lưu và quản lý chúng. Tên gọi không phải ba máy hoặc ba phần mềm.</p></details>
+        <details><summary>Quarantine / DLQ — giữ riêng thông tin lỗi</summary><p>Quarantine là bảng / khu lưu bản ghi lỗi kèm lý do. DLQ (dead-letter queue) là luồng giữ thông báo lỗi để kiểm tra lại. Repo có topic hospital.dlq; đường stream hiện có lưu lỗi trong bảng quarantine.</p></details>
+        <details><summary>MinIO / Iceberg / catalog — kho file / quản lý bảng / tra cứu</summary><p>MinIO giữ đối tượng. Iceberg tổ chức chúng thành bảng có metadata và phiên bản. Catalog giúp Spark / Trino tìm đúng bảng và metadata hiện hành.</p></details>
+        <details><summary>Lakehouse — kho dữ liệu có quản lý bảng để phân tích</summary><p>Ở đây là MinIO + Iceberg. Giữ được dữ liệu gốc và các bảng đã xử lý để Spark viết, Trino đọc mà không chép toàn bộ kho sang một database khác.</p></details>
+        <details><summary>Spark / Trino / SQL — xử lý / hỏi / cách viết câu hỏi</summary><p>Spark biến đổi dữ liệu và tính bảng tổng hợp. Trino thực thi truy vấn trên bảng. SQL là ngôn ngữ diễn đạt câu hỏi, như đếm số lượt theo khoa.</p></details>
+        <details><summary>Kafka, topic, partition, offset — dòng thông báo có vị trí</summary><p>Topic là tên luồng, như hospital.events. Topic được chia thành partition. Offset là vị trí trong một partition; phải biết cả topic, partition, offset để xác định một bản tin Kafka.</p></details>
+        <details><summary>Producer / consumer / lag — gửi / đọc / phần đang chờ</summary><p>Producer gửi vào Kafka, consumer đọc ra. Trong bài thử này lag là số message đã gửi nhưng chưa được xác nhận trong Bronze. Nó không phải thời gian chậm tính bằng giây.</p></details>
+        <details><summary>Event time / watermark — thời gian xảy ra / ngưỡng chấp nhận trễ</summary><p>Event time là giờ việc xảy ra, khác giờ máy nhận nó. Watermark giúp xử lý các sự kiện tới muộn và giới hạn trạng thái theo thời gian sự kiện. Nó không tự sửa giờ sai và không xóa bản gốc trong Bronze.</p></details>
+        <details><summary>Checkpoint / idempotent — nhớ tiến độ / chạy lại an toàn</summary><p>Checkpoint giữ tiến độ đọc và trạng thái Spark. Idempotent nghĩa là thử lại cùng công việc không tạo thêm kết quả ngoài ý định; ví dụ cùng batch ID hoặc cùng vị trí Kafka. Cần kiểm tra theo từng đường ghi.</p></details>
+        <details><summary>ClickHouse / Grafana — đọc chỉ số nhanh / vẽ biểu đồ</summary><p>Theo kế hoạch, ClickHouse giữ các bảng phục vụ realtime; Grafana lấy kết quả từ Trino / ClickHouse để hiển thị. Chưa có dashboard chạy hoàn chỉnh trong checkpoint này.</p></details>
+        <details><summary>Docker / Kubernetes / Prometheus — chạy / điều phối / đo</summary><p>Docker đóng gói dịch vụ để chạy nhất quán; Compose khởi động bộ dịch vụ local. Kubernetes điều phối trên cụm. Prometheus thu số đo hoạt động. Hai phần sau vẫn là kế hoạch.</p></details>
+        <details><summary>ICU / occupancy / OOM — hồi sức / mức sử dụng / hết bộ nhớ</summary><p>ICU là khoa hồi sức tích cực. Occupancy là mức sử dụng so với sức chứa được cấu hình. OOM là tình trạng không đủ bộ nhớ; container có thể bị hệ điều hành dừng.</p></details>
+      </div>
+      <noscript><p>Trình duyệt đang tắt JavaScript: vẫn mở từng mục từ khó để đọc, nhưng không lọc được danh sách.</p></noscript>
+    </section>
+    <footer>
+      <strong>Nguồn trong repo:</strong>
+      <ul class="source-list">
+        <li><a href="../plan.md">plan.md</a>: mục tiêu, thực thể và kiến trúc dự kiến.</li>
+        <li><a href="architecture.md">docs/architecture.md</a>: thành phần đã chạy và giới hạn.</li>
+        <li><a href="data-model.md">docs/data-model.md</a>: trường dữ liệu, mã liên kết, lỗi chủ đích.</li>
+        <li><a href="demo-script.md">docs/demo-script.md</a>: lệnh demo và kết quả đo ngày 25/10.</li>
+        <li><a href="../sql/trino/queries.sql">sql/trino/queries.sql</a>: các câu hỏi SQL có thể chạy.</li>
+      </ul>
+      <p>Trang tự chứa, mở trực tiếp bằng trình duyệt và không cần Internet. Các mô hình bấm thử phục vụ giải thích, không phải dashboard của bệnh viện. Liên kết tới tài liệu / PDF cần giữ cùng cấu trúc thư mục repo.</p>
+    </footer>
+  </main>
+</div>
+<script>
+  'use strict';
+  // These are deliberately tiny teaching fixtures, not a second pipeline implementation.
+  const toyRows = [
+    ['E001','P001','ER','08:00','10:00'],
+    ['E001','P001','ER','08:00','10:00'],
+    ['E002','P002','ICU','09:00','12:00'],
+    ['E003','P003','ICU','11:00','10:00'],
+    ['E004','P999','ER','10:00','12:00']
+  ];
+  function makeTable(headers, rows, rowClasses = []) {
+    const table = document.createElement('table');
+    const head = table.createTHead().insertRow();
+    headers.forEach(value => { const cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = value; head.append(cell); });
+    const body = table.createTBody();
+    rows.forEach((values, index) => {
+      const row = body.insertRow();
+      if (rowClasses[index]) row.className = rowClasses[index];
+      values.forEach(value => { const cell = row.insertCell(); cell.textContent = value; });
+    });
+    return table;
+  }
+  const layers = {
+    bronze: {
+      title:'Bronze giữ nguyên cả 5 dòng.',
+      description:'Giữ cả tên khoa ER, dòng trùng và dòng sai để sau này kiểm tra lại. Khi nhập vào kho, hệ thống ghi thêm nguồn và thời điểm nhận.',
+      headers:['Mã lượt','Bệnh nhân','Khoa gốc','Giờ vào (UTC)','Giờ ra (UTC)'], rows:toyRows,
+      classes:['','duplicate','','bad','bad'],
+      explanation:'E001 xuất hiện hai lần. E003 ra lúc 10:00 nhưng vào lúc 11:00 cùng ngày. E004 trỏ tới P999 không có trong danh sách bệnh nhân. Bronze giữ nguyên các thông tin này.'
+    },
+    silver: {
+      title:'Silver còn 2 dòng hợp lệ; 2 dòng lỗi được giữ riêng.',
+      description:'Gộp bản sao E001; đổi ER thành EMERGENCY. E003 và E004 không vào bảng lượt hợp lệ, nhưng vẫn truy vết được trong khu lỗi.',
+      headers:['Mã lượt','Bệnh nhân','Khoa chuẩn','Kết quả'],
+      rows:[['E001','P001','EMERGENCY','Hợp lệ · thời gian nằm viện 2 giờ'],['E002','P002','ICU','Hợp lệ · thời gian nằm viện 3 giờ'],['E003','P003','ICU','Quarantine: DISCHARGE_BEFORE_ADMISSION'],['E004','P999','EMERGENCY','Quarantine: UNKNOWN_PATIENT']],
+      classes:['','','bad','bad'],
+      explanation:'Hai dòng đầu nằm trong Silver encounters. Hai dòng cuối minh họa bảng quarantine riêng. Bản sao thứ hai của E001 được gộp, không bị đếm như một ca mới.'
+    },
+    gold: {
+      title:'Gold đếm số lượt hợp lệ theo khoa.',
+      description:'Từ hai dòng Silver hợp lệ, tạo bảng nhỏ để trả lời: “Mỗi khoa có bao nhiêu lượt nhập viện trong ngày?”.',
+      headers:['Khoa','Số lượt hợp lệ'],rows:[['EMERGENCY','1'],['ICU','1']],classes:[],
+      explanation:'Tổng là 2 lượt, không phải 5 lượt. Phép đếm không tính bản sao và bản ghi lỗi. Đây là phép tổng hợp thu nhỏ để hiểu Gold; job thật tính thêm nhiều chỉ số khác.'
+    }
+  };
+  function showLayer(name) {
+    const layer = layers[name];
+    document.querySelectorAll('[data-layer]').forEach(button => {
+      const selected = button.dataset.layer === name;
+      button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1;
+    });
+    document.getElementById('layer-panel').setAttribute('aria-labelledby', 'tab-' + name);
+    document.getElementById('layer-title').textContent = layer.title;
+    document.getElementById('layer-description').textContent = layer.description;
+    document.getElementById('layer-table').replaceChildren(makeTable(layer.headers, layer.rows, layer.classes));
+    document.getElementById('layer-explanation').textContent = layer.explanation;
+  }
+  const layerButtons = [...document.querySelectorAll('[data-layer]')];
+  layerButtons.forEach((button, index) => {
+    button.addEventListener('click', () => showLayer(button.dataset.layer));
+    button.addEventListener('keydown', event => {
+      let next;
+      if (event.key === 'ArrowRight') next = (index + 1) % layerButtons.length;
+      else if (event.key === 'ArrowLeft') next = (index + layerButtons.length - 1) % layerButtons.length;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = layerButtons.length - 1;
+      else return;
+      event.preventDefault(); layerButtons[next].focus(); showLayer(layerButtons[next].dataset.layer);
+    });
+  });
+  showLayer('bronze');
+  const nodeDescriptions = {
+    files:['File dữ liệu nguồn','Generator sinh sáu file Parquet từ cấu hình và seed. Các mã bệnh nhân / lượt nối dữ liệu giữa các file.','generators/batch_generator/ → data/generated/'],
+    spark:['Spark nhập dữ liệu vào kho','Đọc Parquet, giữ trường nguồn, thêm thông tin lần nhập và ghi vào bảng Bronze. Các job tiếp theo cũng dùng Spark để làm sạch và tổng hợp.','spark/batch/ingest_bronze.py'],
+    layers:['Ba mức bảng trong cùng Lakehouse','Bronze giữ gốc. Spark tính lại Silver đã kiểm tra và khu lỗi; rồi tính bốn bảng Gold. Mũi tên giữa các lớp là công việc biến đổi dữ liệu.','spark/batch/bronze_to_silver.py; spark/batch/silver_to_gold.py'],
+    trino:['Trino trả lời câu hỏi','Đọc các bảng Iceberg, chạy SQL và trả kết quả. Make query chạy 11 câu hỏi đã viết sẵn; lỗi hoặc kết quả rỗng làm lệnh thất bại.','sql/trino/queries.sql; scripts/run_queries.py'],
+    simulator:['Simulator phát thông báo mới','Chương trình giả lập diễn biến bệnh viện và gửi event với mã, loại, thời gian, nội dung. Có thể điều chỉnh tốc độ và tạo event trễ / trùng / lỗi.','generators/stream_generator/producer.py'],
+    kafka:['Kafka giữ dòng thông báo','Producer gửi vào topic hospital.events. Spark đọc theo từng partition và offset. Mã patient_id được dùng làm khóa phân chia thông báo.','docker-compose.yml; infra/docker/kafka/'],
+    streaming:['Spark Structured Streaming đọc liên tục','Đọc các đợt nhỏ từ Kafka, kiểm tra thông báo rồi chuyển cho sink ghi gốc / khu lỗi. Reader còn cung cấp luồng hợp lệ gộp theo event_id cho bên xử lý phía sau.','spark/streaming/kafka_reader.py; spark/streaming/kafka_to_bronze.py'],
+    streambronze:['Bronze của nhánh streaming','Thông báo gốc và thông báo lỗi vào hai bảng riêng trên Iceberg. Khóa topic + partition + offset giúp thử lại cùng vị trí mà không ghi lặp. Chưa phải bảng chỉ số realtime.','spark/streaming/bronze_sink.py; sql/iceberg/create_stream_bronze_tables.sql']
+  };
+  document.querySelectorAll('[data-node]').forEach(button => button.addEventListener('click', () => {
+    document.querySelectorAll('[data-node]').forEach(other => other.setAttribute('aria-pressed', String(other === button)));
+    const [title, description, path] = nodeDescriptions[button.dataset.node];
+    const heading = document.createElement('h3'); heading.textContent = title;
+    const paragraph = document.createElement('p'); paragraph.textContent = description;
+    const codeParagraph = document.createElement('p'); const code = document.createElement('code'); code.textContent = path; codeParagraph.append(code);
+    document.getElementById('node-detail').replaceChildren(heading, paragraph, codeParagraph);
+  }));
+  let queue = [], sent = 0, accepted = 0, rejected = 0;
+  function renderStream(message) {
+    const counts = document.getElementById('stream-counts'); counts.replaceChildren();
+    [[sent,'đã gửi'],[queue.length,'đang chờ (lag)'],[accepted,'vào bản gốc hợp lệ'],[rejected,'vào khu lỗi']].forEach(([value,label]) => {
+      const group = document.createElement('div'); const number = document.createElement('strong'); number.textContent = value;
+      const text = document.createElement('span'); text.textContent = label; group.append(number, document.createElement('br'), text); counts.append(group);
+    });
+    document.getElementById('process-one').disabled = queue.length === 0;
+    if (message) document.getElementById('stream-log').textContent = message;
+  }
+  function enqueue(valid) { sent++; queue.push({valid,id:sent}); renderStream('Đã gửi thông báo #' + sent + (valid ? ' có đủ mã và loại sự kiện.' : ' thiếu mã sự kiện. Hệ thống sẽ giữ riêng khi đọc tới.')); }
+  document.getElementById('send-valid').addEventListener('click', () => enqueue(true));
+  document.getElementById('send-invalid').addEventListener('click', () => enqueue(false));
+  document.getElementById('process-one').addEventListener('click', () => {
+    const next = queue.shift(); if (!next) return;
+    if (next.valid) accepted++; else rejected++;
+    renderStream('Đã đọc #' + next.id + (next.valid ? ': lưu vào bản gốc hợp lệ.' : ': giữ trong quarantine vì thiếu mã. Các thông báo sau vẫn xử lý được.'));
+  });
+  document.getElementById('reset-stream').addEventListener('click', () => { queue=[]; sent=0; accepted=0; rejected=0; renderStream('Đã làm lại. Thử gửi 3 lần rồi xử lý 1 lần.'); });
+  renderStream();
+  const terms = [...document.querySelectorAll('#terms details')];
+  const fold = value => value.toLocaleLowerCase('vi').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d');
+  document.getElementById('term-search').addEventListener('input', event => {
+    const query = fold(event.target.value.trim()); let shown = 0;
+    terms.forEach(term => { term.hidden = !fold(term.textContent).includes(query); if (!term.hidden) shown++; });
+    document.getElementById('search-status').textContent = query ? (shown ? 'Tìm thấy ' + shown + ' mục.' : 'Chưa có mục khớp. Thử một từ ngắn hơn.') : '';
+  });
+  if ('IntersectionObserver' in window) {
+    const navLinks = [...document.querySelectorAll('nav a')];
+    const observer = new IntersectionObserver(entries => entries.forEach(entry => {
+      if (entry.isIntersecting) navLinks.forEach(link => {
+        const active = link.hash === '#' + entry.target.id; link.classList.toggle('active', active);
+        if (active) link.setAttribute('aria-current','location'); else link.removeAttribute('aria-current');
+      });
+    }), {rootMargin:'-10% 0px -65% 0px'});
+    document.querySelectorAll('main section').forEach(section => observer.observe(section));
+  }
+  window.addEventListener('beforeprint', () => terms.forEach(term => { term.dataset.wasOpen = String(term.open); term.dataset.wasHidden = String(term.hidden); term.open = true; term.hidden = false; }));
+  window.addEventListener('afterprint', () => terms.forEach(term => { term.open = term.dataset.wasOpen === 'true'; term.hidden = term.dataset.wasHidden === 'true'; }));
+</script>
+</body>
+</html>
