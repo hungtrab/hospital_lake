@@ -1,7 +1,7 @@
 PYTHON ?= python3
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then printf 'docker compose'; else printf 'docker-compose'; fi)
 
-.PHONY: kafka-recovery kafka-up kafka-stop kafka-topics kafka-smoke batch batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold gold-docker stream-bronze stream-bronze-docker stream-bronze-probe stream-gate produce produce-dry-run query
+.PHONY: kafka-recovery kafka-up kafka-stop kafka-topics kafka-smoke batch batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold gold-docker stream-bronze stream-bronze-docker stream-bronze-probe produce produce-dry-run query slides stream-gate
 .DEFAULT_GOAL := help
 
 help:
@@ -198,3 +198,7 @@ kafka-smoke:
 
 kafka-recovery:
 	COMPOSE="$(COMPOSE)" $(PYTHON) -m scripts.kafka_smoke --restart
+
+# Checkpoint 1 Beamer deck (TeX Live with xelatex, latexmk, Metropolis and Fira fonts).
+slides:
+	latexmk -xelatex -interaction=nonstopmode -outdir=results/slides docs/slides/checkpoint-1.tex
