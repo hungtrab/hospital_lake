@@ -116,7 +116,7 @@
       {\scriptsize\color{muted} \cmd{make generate-data PATIENTS=1000 SEED=42}}
     \column{0.5\textwidth}
       \textbf{Có thể tái lập}\\
-      {\small Cùng seed cho đúng cùng dữ liệu trên mọi máy; quy mô đã thử tới 100k bệnh nhân.}\\[8pt]
+      {\small Cùng seed cho đúng cùng dữ liệu trên mọi máy; generator đã thử tới 100k bệnh nhân.}\\[8pt]
       \textbf{Có lỗi cài sẵn có chủ đích}\\
       {\small Bản ghi trùng, tên khoa viết tắt, giờ ra viện trước giờ nhập viện: để kiểm chứng tầng Silver.}\\[8pt]
       \textbf{Bronze khớp nguồn}\\
@@ -149,7 +149,7 @@
     \bignum{11/11}{query Silver/Gold có kết quả (\cmd{make query})}\hfill
     \bignum{187 h}{thời gian nằm viện TB của ICU}\hfill
     \bignum{27,8\%}{tỷ lệ xét nghiệm Glucose bất thường}\hfill
-    \bignum{40\%}{lấp đầy ICU tháng 8 (20 giường)}
+    \bignum{38,3\%}{lấp đầy ICU TB tháng 8/2026 (20 giường)}
   \end{center}
   \vfill
   \small
@@ -168,7 +168,7 @@
   \small
   \begin{itemize}
     \item Có event trễ, trùng, lỗi định dạng có chủ đích; event lỗi vào quarantine, stream không dừng.
-    \item Kill reader giữa chừng rồi chạy lại: nhờ checkpoint, Bronze vẫn đủ mọi offset, không trùng.
+    \item Kill reader giữa chừng rồi chạy lại (thử ở 10–20 event/s): nhờ checkpoint, Bronze vẫn đủ mọi offset, không trùng.
     \item Reader 1 core (\texttt{local[1]}) chỉ $\approx$950 event/s: lag tăng dần tới \GATELAG{} message, về 0 trong $\sim$\GATECATCHUP{} giây sau khi producer dừng.
     \item \alert{Hạn chế đã biết:} với $\sim$660k dòng, reader chạm giới hạn 1,25 GiB và bị OOM-kill một lần; nghi do sink \texttt{MERGE} toàn bảng mỗi micro-batch. Xử lý ở tuần 5.
   \end{itemize}
@@ -186,7 +186,7 @@
       \textbf{Kiểm thử và review}\\
       {\small
       \begin{itemize}
-        \item \GATETESTS{} test tự động (unit + contract), pass ở cả UTC và UTC+7.
+        \item \GATETESTS{} test tự động (unit, contract, Spark local), pass ở cả UTC và UTC+7.
         \item Mỗi PR qua một agent audit độc lập; PASS mới merge, có ghi base/head SHA.
         \item Commit nhỏ, đứng tên người thật trong Git.
       \end{itemize}}
