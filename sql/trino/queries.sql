@@ -42,7 +42,7 @@ GROUP BY department ORDER BY avg_length_of_stay_hours DESC;
 
 -- 8. Abnormal lab rate by test (all Silver lab results).
 SELECT test_name, count(*) AS total_tests, count_if(is_abnormal) AS abnormal_tests,
-       round(avg(IF(is_abnormal, 1.0, 0.0)), 3) AS abnormal_rate
+       round(CAST(count_if(is_abnormal) AS DOUBLE) / count(*), 3) AS abnormal_rate
 FROM iceberg.silver.lab_results
 GROUP BY test_name ORDER BY abnormal_rate DESC;
 
