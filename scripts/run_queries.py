@@ -7,6 +7,8 @@ Usage:
 Every statement in ``sql/trino/queries.sql`` must start with a ``-- N. title``
 comment. A statement that errors or returns no rows fails the run, so an empty
 or missing Silver/Gold table cannot pass silently.
+Statements are split on ';', so queries must not contain ';' inside strings or
+comments (a broken split fails loudly as a Trino error).
 """
 
 import argparse

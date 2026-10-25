@@ -61,7 +61,8 @@ Highlights to show:
 
 - query 7 — average length of stay by department (ICU ≈ 187 h);
 - query 8 — abnormal lab rate by test (Glucose ≈ 0.278);
-- query 9 — monthly ICU utilization against 20 configured beds;
+- query 9 — monthly ICU utilization against 20 configured beds (the
+  2026-09 bucket is only the single cutoff hour at `GOLD_AS_OF`);
 - query 10 — one patient's encounter history joined with lab results;
 - query 11 — data-quality view: quarantined rows by entity and reason
   (`DISCHARGE_BEFORE_ADMISSION` 5 encounters → 39 child rows `UNKNOWN_ENCOUNTER`).
@@ -74,7 +75,8 @@ Ad-hoc: `docker compose exec trino trino` then e.g.
 `make kafka-up` creates `hospital.events` and `hospital.dlq` (3 partitions);
 `make kafka-smoke` prints `PASS: 24 simulator events, patient keys/partitions, ...`;
 `make produce RATE=100 DURATION=10` sends 1000 events including intentional
-late/duplicate/invalid ones and reports 0 delivery failures. The Kafka →
+late/duplicate/invalid ones (counted in its progress log) and exits 0;
+any failed delivery is logged as `delivery_failures` and exits 1. The Kafka →
 Structured Streaming → Bronze reader in Compose is TV3's PR #17 and is shown
 only once merged. The Week 4 throughput gate (1000 events/s for 10 min) is not
 claimed yet.

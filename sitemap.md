@@ -76,10 +76,9 @@ Legend — **Layer**: Lambda layer the code belongs to (Batch / Speed / Serving 
 
 | Planned file | Content | Wk |
 |---|---|---|
-| `demo-script.md` | Checkpoint 1 demo steps, exact commands and expected (measured) output | 4 |
 | `architecture.md` | Implemented local Week 1 topology, versions, persistence and reproducible gate; later batch/stream paths remain planned | 1+ |
 | `data-model.md` | Implemented six-entity source contracts, migration, raw defect semantics and local 10k/100k measurements; Bronze and all six Silver contracts; Gold checkpoint integration remains pending | 1–3 |
-| `demo-script.md` | Exact demo commands (`plan.md` §28) | 9 |
+| `demo-script.md` | Implemented for Checkpoint 1: demo steps, exact commands and measured expected output; extended to the final demo (`plan.md` §28) | 4, 9 |
 | `benchmark.md` | Raw measurements + interpretation | 8 |
 
 Docs describe **what exists**, never planned-but-unbuilt features (`AGENTS.md` §38).
