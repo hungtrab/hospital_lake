@@ -31,3 +31,9 @@ results/
 .idea/
 .vscode/
 .DS_Store
+
+# Optional presentation video toolchain and generated narration/timeline
+docs/video/node_modules/
+docs/video/public/audio/
+docs/video/src/timeline.json
+.video-venv/

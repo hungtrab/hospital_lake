@@ -1,0 +1,27 @@
+{
+  "name": "hospitallake-introduction-video",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "check": "tsc --noEmit",
+    "stills": "node render.mjs --stills",
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.538",
+    "@remotion/cli": "4.0.538",
+    "@remotion/fonts": "4.0.538",
+    "@remotion/gsap": "4.0.538",
+    "@remotion/media": "4.0.538",
+    "@remotion/renderer": "4.0.538",
+    "gsap": "3.15.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "4.0.538"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.7",
+    "typescript": "5.9.3"
+  }
+}
