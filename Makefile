@@ -96,8 +96,9 @@ stream-bronze:
 	$(PYTHON) -m spark.streaming.kafka_to_bronze --bootstrap-servers "$(KAFKA_BOOTSTRAP_SERVERS)" --topics "$(KAFKA_TOPICS)" --starting-offsets "$(STARTING_OFFSETS)" --checkpoint-location "$(CHECKPOINT_LOCATION)"
 
 STREAM_KAFKA_BOOTSTRAP_SERVERS ?= kafka:29092
+STREAM_CHECKPOINT_LOCATION_DOCKER ?= /tmp/checkpoints/stream-bronze
 stream-bronze-docker:
-	STREAM_KAFKA_BOOTSTRAP_SERVERS="$(STREAM_KAFKA_BOOTSTRAP_SERVERS)" KAFKA_TOPICS="$(KAFKA_TOPICS)" KAFKA_STARTING_OFFSETS="$(STARTING_OFFSETS)" $(COMPOSE) run --rm stream-bronze
+	STREAM_KAFKA_BOOTSTRAP_SERVERS="$(STREAM_KAFKA_BOOTSTRAP_SERVERS)" KAFKA_TOPICS="$(KAFKA_TOPICS)" KAFKA_STARTING_OFFSETS="$(STARTING_OFFSETS)" STREAM_CHECKPOINT_LOCATION_DOCKER="$(STREAM_CHECKPOINT_LOCATION_DOCKER)" $(COMPOSE) run --rm stream-bronze
 
 test-stream-bronze:
 	RUN_STREAM_BRONZE_TESTS=1 $(PYTHON) -m unittest discover -s tests/integration -p test_stream_bronze_iceberg.py -v
