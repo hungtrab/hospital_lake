@@ -5,6 +5,11 @@ import unittest
 from datetime import datetime, timezone
 
 
+def utc_hour(value):
+    """PySpark collects timestamps as naive local-time datetimes; key them in UTC."""
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H")
+
+
 @unittest.skipUnless(importlib.util.find_spec("pyspark"), "pyspark is not installed")
 class GoldMetricTests(unittest.TestCase):
     @classmethod
@@ -56,7 +61,7 @@ class GoldMetricTests(unittest.TestCase):
         result = build_gold(self.spark, *self.fixture(),
                             as_of="2026-10-02T04:00:00Z",
                             capacities={"ICU": 2, "CARDIOLOGY": 2})
-        rows = {row.hour.strftime("%Y-%m-%d %H"): row
+        rows = {utc_hour(row.hour): row
                 for row in result["hospital_hourly_metrics"].collect()}
         self.assertEqual((rows["2026-10-01 10"].current_patients,
                           rows["2026-10-01 10"].admissions,
@@ -67,7 +72,7 @@ class GoldMetricTests(unittest.TestCase):
         self.assertEqual((rows["2026-10-01 12"].current_patients,
                           rows["2026-10-01 12"].discharges), (1, 1))
         self.assertEqual(rows["2026-10-02 04"].current_patients, 1)
-        icu = {row.timestamp.strftime("%Y-%m-%d %H"): row
+        icu = {utc_hour(row.timestamp): row
                for row in result["icu_occupancy"].collect()}
         self.assertEqual((icu["2026-10-01 10"].occupied_beds,
                           icu["2026-10-01 10"].total_beds,
