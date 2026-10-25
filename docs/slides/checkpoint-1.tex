@@ -26,7 +26,7 @@
 \newcommand{\GATEMSGS}{600k}
 \newcommand{\GATELAG}{71.777}
 \newcommand{\GATECATCHUP}{103}
-\newcommand{\GATETESTS}{152}
+\newcommand{\GATETESTS}{155}
 \newcommand{\cmd}[1]{{\ttfamily\small\color{teal}#1}}
 \newcommand{\bignum}[2]{\begin{minipage}[t]{0.23\textwidth}\centering{\Huge\bfseries\color{teal}#1}\\[2pt]{\small\color{muted}#2}\end{minipage}}
 
@@ -157,7 +157,7 @@
   {\footnotesize\color{muted} SQL nằm trong \texttt{sql/trino/queries.sql}; query nào lỗi hoặc rỗng thì \cmd{make query} trả mã lỗi.}
 \end{frame}
 
-\begin{frame}{Speed layer: gate tuần 4}
+\begin{frame}{Speed layer: gate tuần 4 (\texttt{make stream-gate})}
   \begin{center}
     \bignum{\GATERATE}{event/s producer đo được}\hfill
     \bignum{10 phút}{chạy liên tục}\hfill
@@ -167,11 +167,11 @@
   \vfill
   \small
   \begin{itemize}
-    \item Producer có event trễ, trùng và lỗi định dạng có chủ đích; event lỗi vào \texttt{stream\_events\_quarantine}, không làm dừng stream.
-    \item Kill container stream giữa chừng rồi chạy lại: checkpoint giúp Bronze vẫn đủ mọi offset, không trùng.
-    \item Reader 1 core (\texttt{local[1]}) xử lý $\approx$950 event/s: lag dao động tới \GATELAG{} message, về 0 sau \GATECATCHUP{} giây khi producer dừng. Scale reader là việc tuần 7.
+    \item Có event trễ, trùng, lỗi định dạng có chủ đích; event lỗi vào quarantine, stream không dừng.
+    \item Kill reader giữa chừng rồi chạy lại: nhờ checkpoint, Bronze vẫn đủ mọi offset, không trùng.
+    \item Reader 1 core (\texttt{local[1]}) chỉ $\approx$950 event/s: lag tăng dần tới \GATELAG{} message, về 0 trong $\sim$\GATECATCHUP{} giây sau khi producer dừng.
+    \item \alert{Hạn chế đã biết:} sink \texttt{MERGE} trên toàn bảng Bronze mỗi micro-batch; với $\sim$660k dòng reader chạm giới hạn 1,25 GiB và bị OOM-kill một lần. Sửa ở tuần 5.
   \end{itemize}
-  {\footnotesize\color{muted} Tái lập: \cmd{make stream-bronze-docker} rồi \cmd{make stream-gate}}
 \end{frame}
 
 \begin{frame}{Quy trình làm việc}
@@ -202,11 +202,12 @@
     1 & Lakehouse bootstrap & Spark → Iceberg → Trino & \alert{Xong} \\
     2 & Generator + Bronze  & 6 bảng Bronze khớp nguồn & \alert{Xong} \\
     3 & Silver + Gold       & Bronze → Silver → Gold → SQL & \alert{Xong} \\
-    4 & Kafka + streaming   & 1000 event/s, 10 phút → Bronze & \alert{Xong} \\
+    4 & Kafka + streaming   & 1000 event/s, 10 phút → Bronze & \alert{Xong}* \\
     5 & Realtime serving    & Kafka → Spark → ClickHouse → Grafana & Tiếp theo \\
     6–9 & K8s, scale, benchmark & Chạy trên K8s, phục hồi lỗi, demo cuối & Kế hoạch \\
     \bottomrule
-  \end{tabular}
+  \end{tabular}\\[6pt]
+  {\footnotesize\color{muted} * Gate đạt; độ ổn định khi chạy lâu của reader chưa đạt (giới hạn bộ nhớ của sink).}
 \end{frame}
 
 \begin{frame}{Kế hoạch tiếp theo}
@@ -214,7 +215,7 @@
     \column{0.31\textwidth}
       {\color{teal}\small\bfseries TUẦN 5}\\[2pt]
       \textbf{Realtime analytics}\\[4pt]
-      {\small Gộp theo cửa sổ event-time, ghi vào ClickHouse, dashboard Grafana được provision từ code.}
+      {\small Sửa sink Bronze (MERGE có lọc offset); gộp theo cửa sổ event-time vào ClickHouse; dashboard Grafana provision từ code.}
     \column{0.31\textwidth}
       {\color{teal}\small\bfseries TUẦN 6–7}\\[2pt]
       \textbf{Kubernetes}\\[4pt]
