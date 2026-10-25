@@ -9,12 +9,14 @@ from __future__ import annotations
 import argparse
 from difflib import SequenceMatcher
 import hashlib
+import importlib.util
 import json
 import math
 import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 PROJECT = Path(__file__).resolve().parent
 BUILD = PROJECT.parents[1] / "results" / "video"
@@ -87,24 +89,24 @@ def prepare_voice(data, limit=None, regenerate=None, attempt=0):
     (PUBLIC / "audio").mkdir(parents=True, exist_ok=True)
     (BUILD / "native").mkdir(parents=True, exist_ok=True)
     for i, j, scene, part in pending:
-            audio, metadata = paths(i, j)
-            print(f"SPEAK {i + 1}/{len(data['scenes'])}: {scene['title']}", flush=True)
-            seed = 9000 + i * 10 + j + attempt
-            torch.manual_seed(seed)
-            np.random.seed(seed)
-            waveform = tts.infer(part["text"], voice=data["voice"], temperature=.7,
-                                 max_new_frames=600, max_chars=200)
-            native = BUILD / "native" / f"{i:02}_{j}.wav"
-            tts.save(waveform, str(native))
-            temporary = audio.with_suffix(".tmp.mp3")
-            subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(native), "-af",
-                            f"atempo={data['speed']}", "-c:a", "libmp3lame", "-b:a", "160k", str(temporary)], check=True)
-            temporary.replace(audio)
-            meta = {"digest": digest(data, part["text"]), "voice": data["voice"],
-                    "voice_label": matches[0][0], "region": "Bắc", "model": data["model"],
-                    "speed": data["speed"], "duration": probe_duration(audio), "text": part["text"], "generation_seed": seed}
-            metadata.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
-            print(f"AUDIO {i + 1}: {meta['duration']:.2f}s", flush=True)
+        audio, metadata = paths(i, j)
+        print(f"SPEAK {i + 1}/{len(data['scenes'])}: {scene['title']}", flush=True)
+        seed = 9000 + i * 10 + j + attempt
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        waveform = tts.infer(part["text"], voice=data["voice"], temperature=.7,
+                             max_new_frames=600, max_chars=200)
+        native = BUILD / "native" / f"{i:02}_{j}.wav"
+        tts.save(waveform, str(native))
+        temporary = audio.with_suffix(".tmp.mp3")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(native), "-af",
+                        f"atempo={data['speed']}", "-c:a", "libmp3lame", "-b:a", "160k", str(temporary)], check=True)
+        temporary.replace(audio)
+        meta = {"digest": digest(data, part["text"]), "voice": data["voice"],
+                "voice_label": matches[0][0], "region": "Bắc", "model": data["model"],
+                "speed": data["speed"], "duration": probe_duration(audio), "text": part["text"], "generation_seed": seed}
+        metadata.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
+        print(f"AUDIO {i + 1}: {meta['duration']:.2f}s", flush=True)
     tts.close()
 
 
@@ -184,7 +186,10 @@ def prepare_alignment(data):
     import numpy as np
     from faster_whisper import WhisperModel
 
-    # CPU alignment keeps the laptop GPU free after the separate TTS process exits.
+    # Alignment starts only after the separate TTS process exits.
+    device = os.environ.get("VIDEO_ALIGN_DEVICE", "cpu")
+    if device not in ("cpu", "cuda"):
+        raise ValueError("VIDEO_ALIGN_DEVICE must be cpu or cuda")
     recognizer = None
     cursor_frames, scenes, all_cues, transcript = 0, [], [], []
     fps = data["fps"]
@@ -198,12 +203,13 @@ def prepare_alignment(data):
                 raise RuntimeError(f"Missing/stale narration {audio}; run prepare.py voice first")
             if not meta.get("words"):
                 if recognizer is None:
-                    recognizer = WhisperModel("small", device="cpu", compute_type="int8", cpu_threads=4)
+                    recognizer = WhisperModel("small", device=device,
+                                              compute_type="int8_float16" if device == "cuda" else "int8", cpu_threads=4)
                 pcm = np.frombuffer(subprocess.check_output([
                     "ffmpeg", "-v", "error", "-i", str(audio), "-ac", "1", "-ar", "16000", "-f", "f32le", "pipe:1"
                 ]), dtype=np.float32)
                 segments, _ = recognizer.transcribe(pcm, language="vi", word_timestamps=True, beam_size=5,
-                                                   initial_prompt=part["text"], vad_filter=False,
+                                                   vad_filter=False,
                                                    condition_on_previous_text=False)
                 recognized = []
                 for segment in segments:
@@ -215,7 +221,7 @@ def prepare_alignment(data):
                                                "end": word.start + (word.end - word.start) * (k + 1) / len(tokens)})
                 aligned, coverage = align_words(part["text"], recognized, meta["duration"])
                 make_captions(aligned, 0, meta["duration"])
-                meta.update(words=aligned, alignment_coverage=coverage)
+                meta.update(words=aligned, alignment_coverage=coverage, alignment_device=device)
                 metadata.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n")
             audio_parts.append({"src": str(audio.relative_to(PUBLIC)), "from": round(cursor * fps),
                                 "duration": math.ceil(meta["duration"] * fps)})
@@ -267,6 +273,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.limit is not None and (args.limit < 1 or args.phase != "voice"):
         parser.error("--limit is a positive voice-preview-only option")
+    if args.phase == "align" and os.environ.get("VIDEO_ALIGN_DEVICE") == "cuda":
+        # The NVIDIA wheels may carry cuDNN/cuBLAS outside the system loader path.
+        directories = []
+        for name in ("nvidia.cudnn", "nvidia.cublas"):
+            try:
+                spec = importlib.util.find_spec(name)
+            except ModuleNotFoundError:
+                spec = None
+            if spec and spec.submodule_search_locations:
+                directories.append(str(Path(next(iter(spec.submodule_search_locations))) / "lib"))
+        current = os.environ.get("LD_LIBRARY_PATH", "").split(":")
+        missing = [directory for directory in directories if directory not in current]
+        if missing:
+            env = dict(os.environ, LD_LIBRARY_PATH=":".join(missing + current))
+            os.execve(sys.executable, [sys.executable, *sys.argv], env)
     BUILD.mkdir(parents=True, exist_ok=True)
     content = load_content()
     if args.regenerate is not None and (args.phase != "voice" or not 1 <= args.regenerate <= len(content["scenes"])):
