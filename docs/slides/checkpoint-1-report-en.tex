@@ -1,0 +1,167 @@
+% Checkpoint report. Keep Beamer's default theme, fonts and colors.
+% Build: make slides-report (pdfLaTeX + latexmk).
+\documentclass{beamer}
+\usepackage{booktabs}
+
+\title{HospitalLake}
+\subtitle{Cloud-Native Hospital Data Lakehouse\\Checkpoint 1 Report}
+\author{HospitalLake Team}
+\institute{Big Data Project}
+\date{26 October 2026}
+
+\newcommand{\source}[1]{\vfill{\tiny Source: #1\par}}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{HospitalLake connects data to analytics}
+  \begin{itemize}
+    \item Combine historical records and live hospital events.
+    \item Preserve raw data, validate records, and compute metrics.
+    \item Answer questions about admissions, length of stay, labs, and ICU usage.
+  \end{itemize}
+  \bigskip
+  Checkpoint scope: a runnable local pipeline using synthetic data.
+  \source{plan.md; docs/architecture.md.}
+\end{frame}
+
+\begin{frame}{Six entities model hospital activity}
+  \begin{center}
+    \begin{tabular}{lr}
+      \toprule
+      \textbf{Entity} & \textbf{Source rows} \\
+      \midrule
+      Patients & 1,000 \\
+      Encounters & 3,094 \\
+      Lab results & 12,839 \\
+      Medication orders & 6,149 \\
+      Vital measurements & 9,261 \\
+      Bed events & 3,938 \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+  \smallskip
+  Synthetic Parquet files; reproducible with seed 42.\\
+  Linked through \texttt{patient\_id} and \texttt{encounter\_id}.
+  \source{docs/data-model.md; docs/demo-script.md. Default dataset, measured 25 October 2026.}
+\end{frame}
+
+\begin{frame}{Batch and stream share a lakehouse}
+  \textbf{Batch: implemented}
+  \[
+    \text{Parquet} \to \text{Spark} \to
+    \underbrace{\text{Bronze} \to \text{Silver} \to \text{Gold}}_{\text{MinIO + Iceberg}}
+    \to \text{Trino}
+  \]
+  \medskip
+  \textbf{Streaming: implemented through storage}
+  \[
+    \text{Simulator} \to \text{Kafka} \to
+    \text{Spark Streaming} \to \text{Bronze}
+  \]
+  \small Raw events and quarantine are stored in MinIO + Iceberg.
+  \medskip
+
+  \textbf{Planned:} realtime metrics in ClickHouse; Grafana dashboards.
+  \source{docs/architecture.md. Lambda design: batch, speed, and serving layers.}
+\end{frame}
+
+\begin{frame}{Batch keeps raw data and isolates errors}
+  \begin{itemize}
+    \item \textbf{Bronze:} preserve source rows and ingestion metadata.
+    \item \textbf{Silver:} normalize, deduplicate, validate; quarantine errors.
+    \item \textbf{Gold:} compute four historical aggregate tables.
+  \end{itemize}
+  \bigskip
+  Encounters: 3,094 source rows $\to$ 3,058 valid rows.\\
+  31 exact copies merged; 5 invalid rows quarantined.
+  \source{docs/demo-script.md; docs/slides/checkpoint-1.tex. Default dataset, 25 October 2026.}
+\end{frame}
+
+\begin{frame}{Historical queries return useful results}
+  \textbf{11/11 Trino queries returned data.}\par
+  \bigskip
+  \begin{tabular}{lr}
+    \toprule
+    \textbf{Example result} & \textbf{Value} \\
+    \midrule
+    Mean ICU length of stay & 187.3 hours \\
+    Abnormal Glucose results & 27.8\% \\
+    Mean ICU occupancy, August 2026 & 38.3\% \\
+    \bottomrule
+  \end{tabular}
+  \bigskip
+
+  Synthetic dataset; ICU capacity configured as 20 beds.
+  \source{sql/trino/queries.sql; docs/demo-script.md; docs/slides/checkpoint-1.tex. Measured 25 October 2026.}
+\end{frame}
+
+\begin{frame}{Streaming works, but needs hardening}
+  \begin{tabular}{lr}
+    \toprule
+    Input rate (10 min) & 1,000 messages/s \\
+    Messages in Bronze & 600,000 \\
+    Peak backlog & 71,777 messages \\
+    Catch-up after producer stopped & ${\sim}103$ s \\
+    \bottomrule
+  \end{tabular}
+  \medskip
+  \begin{itemize}
+    \item No missing or repeated Kafka offsets in this test.
+    \item One-core reader: ${\sim}950$ messages/s; backlog grows.
+    \item An out-of-memory kill occurred after the test. Long-running stability remains open.
+  \end{itemize}
+  \source{results/stream-gate.json (local run); docs/architecture.md. Measured 25 October 2026.}
+\end{frame}
+
+\begin{frame}[fragile]{The demo shows code, data, and architecture}
+  On a prepared local environment:
+  \begin{verbatim}
+make up
+make batch PYTHON=.venv/bin/python
+make query PYTHON=.venv/bin/python
+  \end{verbatim}
+  \begin{itemize}
+    \item Show Git history and the six source files.
+    \item Inspect clean tables and quarantined records.
+    \item Run an analytical query and explain the architecture.
+  \end{itemize}
+  \source{docs/demo-script.md; scripts/checkpoint\_demo.sh. Setup prerequisites are documented in the demo script.}
+\end{frame}
+
+\begin{frame}{Next: stabilize streaming and add serving}
+  \begin{itemize}
+    \item \textbf{Week 5:} profile stream memory and file growth; add ClickHouse metrics and Grafana dashboards.
+    \item \textbf{Weeks 6--7:} deploy on Kubernetes; test scaling and recovery.
+    \item \textbf{Weeks 8--9:} benchmark, run end-to-end tests, and harden the demo.
+  \end{itemize}
+  \bigskip
+  \textbf{Current result:} runnable historical analytics and live event ingestion.
+  \medskip
+
+  \small\url{https://github.com/hungtrab/hospital_lake}
+  \source{works.md; docs/architecture.md. Serving, dashboards, and Kubernetes remain planned at this checkpoint.}
+\end{frame}
+
+% Expand Beamer's translated appendix bookmark cleanly in PDF metadata.
+\pdfstringdefDisableCommands{\def\translate#1{#1}}
+\appendix
+\begin{frame}{References}
+  \begin{itemize}
+    \item \texttt{plan.md}: scope and target architecture.
+    \item \texttt{works.md}: milestones and integration gates.
+    \item \texttt{docs/data-model.md}: synthetic data contracts.
+    \item \texttt{docs/architecture.md}: implementation status and limitations.
+    \item \texttt{docs/demo-script.md}: commands and measured output.
+    \item \texttt{sql/trino/queries.sql}: analytical queries.
+  \end{itemize}
+  \medskip
+  \small Measurement date: 25 October 2026.\\
+  Local evidence: \texttt{results/stream-gate.json}.\\
+  Build: \texttt{make slides-report}.
+\end{frame}
+
+\end{document}
