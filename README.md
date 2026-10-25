@@ -357,7 +357,9 @@ non-key values. A live run requires completed Bronze ingestion with `_batch_id`.
 daily department demand/utilization, and daily lab abnormal rates from
 `iceberg.silver.encounters`, `lab_results`, and `bed_events`. It creates and fully
 replaces four Iceberg Gold tables using `sql/iceberg/create_gold_tables.sql`.
-Five example Trino queries are in `sql/trino/queries.sql`.
+`make query` runs the 11 Silver/Gold queries in `sql/trino/queries.sql` through
+Trino and fails on any error or empty result. The checkpoint demo is scripted in
+`scripts/checkpoint_demo.sh` ([demo script](docs/demo-script.md)).
 
 In Compose (no host Spark needed), `make batch` ends with `make gold-docker`,
 which can also be run alone after Silver exists:
