@@ -80,6 +80,7 @@ Legend — **Layer**: Lambda layer the code belongs to (Batch / Speed / Serving 
 | `data-model.md` | Implemented six-entity source contracts, migration, raw defect semantics and local 10k/100k measurements; Bronze and all six Silver contracts; Gold checkpoint integration remains pending | 1–3 |
 | `slides/checkpoint-1.tex` | Checkpoint 1 Beamer deck (Vietnamese, measured numbers); `make slides` builds `results/slides/checkpoint-1.pdf` with xelatex | 4 |
 | `hospitallake-explained.html` | Offline Vietnamese beginner guide: hospital example, six entities, batch/stream, interactive teaching fixtures for medallion layers and queue/quarantine, architecture, measured checkpoint status and glossary. Open directly in a browser; examples are explicitly separate from live pipeline results. | 4 |
+| `slides/hospitallake-explained.tex` | Beginner Beamer companion: 9 main slides + references, plain-language roles and dated evidence, source speaker notes; `make slides-explained` builds `results/slides/hospitallake-explained.pdf` with the existing XeLaTeX/Fira toolchain. | 4 |
 | `demo-script.md` | Implemented for Checkpoint 1: demo steps, exact commands and measured expected output; extended to the final demo (`plan.md` §28) | 4, 9 |
 | `benchmark.md` | Raw measurements + interpretation | 8 |
 

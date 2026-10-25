@@ -1,0 +1,256 @@
+% Audience: a teammate encountering data-engineering terms for the first time.
+% Explain the hospital task before introducing its technical name.
+% Build: make slides-explained. Main deck: 9 slides + 1 reference appendix.
+\documentclass[aspectratio=169,11pt]{beamer}
+\usepackage{fontspec}
+\setsansfont{FiraSans}[Extension=.otf,UprightFont=*-Regular,BoldFont=*-SemiBold,ItalicFont=*-Italic,BoldItalicFont=*-SemiBoldItalic]
+\setmonofont{FiraMono}[Extension=.otf,UprightFont=*-Regular,BoldFont=*-Medium]
+\usepackage{booktabs}
+\usepackage{anyfontsize}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit}
+% A larger physical canvas keeps 20--22 pt body text readable in the PDF.
+\geometry{paperwidth=320mm,paperheight=180mm}
+\setbeamersize{text margin left=14mm,text margin right=14mm}
+\definecolor{ink}{HTML}{14213D}
+\definecolor{teal}{HTML}{0F766E}
+\definecolor{soft}{HTML}{EAF5F3}
+\definecolor{muted}{HTML}{526171}
+\definecolor{wash}{HTML}{F5F7F8}
+\definecolor{rulecolor}{HTML}{D7E1E5}
+\setbeamercolor{normal text}{fg=ink,bg=white}
+\setbeamercolor{frametitle}{fg=ink,bg=white}
+\setbeamercolor{alerted text}{fg=teal}
+\setbeamercolor{footline}{fg=muted,bg=white}
+\setbeamerfont{frametitle}{size=\fontsize{29}{35}\selectfont,series=\bfseries}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{frametitle}{\vspace{8mm}\insertframetitle\par\vspace{4mm}}
+\setbeamertemplate{footline}{\hspace{14mm}\fontsize{12}{15}\selectfont HospitalLake · Hiểu từ đầu\hfill Checkpoint 1 · 26/10/2026\hspace{8mm}\insertframenumber/\inserttotalframenumber\hspace{14mm}\vspace{6mm}}
+\setbeamertemplate{itemize items}{\color{teal}\small\textbullet}
+\renewcommand{\normalsize}{\fontsize{21}{28}\selectfont}
+\renewcommand{\small}{\fontsize{18}{24}\selectfont}
+\renewcommand{\footnotesize}{\fontsize{13}{17}\selectfont}
+\setbeameroption{hide notes}
+\newcommand{\labeltext}[1]{{\fontsize{13}{17}\selectfont\bfseries\color{teal}#1}}
+\newcommand{\source}[1]{\vfill{\footnotesize\color{muted}Nguồn: #1\par}}
+\newcommand{\command}[1]{{\ttfamily\fontsize{19}{25}\selectfont\color{teal}#1}}
+\newcommand{\bigstat}[2]{{\fontsize{56}{60}\selectfont\bfseries\color{teal}#1}\par\vspace{2mm}{\small #2}}
+\tikzset{
+ box/.style={draw=teal,fill=soft,text=ink,rounded corners=2mm,align=center,inner sep=4mm,font=\fontsize{18}{23}\selectfont},
+ neutral/.style={draw=rulecolor,fill=wash,text=ink,rounded corners=2mm,align=left,inner sep=5mm,font=\fontsize{20}{27}\selectfont},
+ planned/.style={draw=muted,dashed,fill=white,text=muted,rounded corners=2mm,align=center,inner sep=3mm,font=\fontsize{16}{21}\selectfont},
+ flow/.style={-{Stealth[length=3mm]},thick,draw=muted}
+}
+
+\title{Hiểu HospitalLake từ đầu}
+\author{Nhóm HospitalLake · Big Data}
+\date{26/10/2026}
+\begin{document}
+\normalsize
+
+% 01 · Typographic cover: the problem precedes every tool name.
+\begin{frame}[plain]
+  \vspace{8mm}
+  \labeltext{HOSPITALLAKE / MỘT PROJECT KỸ THUẬT DỮ LIỆU}\par
+  \vspace{9mm}
+  {\fontsize{44}{52}\selectfont\bfseries Từ ghi chép bệnh viện\par đến câu trả lời có ích.\par}
+  \vspace{10mm}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.61\textwidth}
+      Gom dữ liệu → kiểm tra → tính số liệu.\par\vspace{5mm}
+      \textbf{Ví dụ:} Mỗi khoa có bao nhiêu lượt nhập viện?\par
+    \column{0.32\textwidth}
+      \labeltext{CHECKPOINT 1}\par\vspace{3mm}
+      {\small Dữ liệu đã có.\par Code đã chạy.\par Kiến trúc đã rõ.}
+  \end{columns}
+  \vfill
+  {\footnotesize Nhóm HospitalLake · Big Data · 26/10/2026\hfill Dữ liệu giả lập, không có hồ sơ bệnh nhân thật.}
+  \note{Bắt đầu bằng chuyện bệnh viện có nhiều sổ: tiếp nhận, xét nghiệm, thuốc, giường. Muốn biết tình hình toàn viện thì phải nối và kiểm tra các ghi chép. Đó là việc của project này.}
+\end{frame}
+
+% 02 · One exhibit: a plain-language mapping of the six source entities.
+\begin{frame}{Một bệnh nhân tạo ra sáu loại ghi chép.}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.65\textwidth}
+      {\fontsize{20}{25}\selectfont
+      \renewcommand{\arraystretch}{1.3}
+      \begin{tabular}{@{}ll@{}}
+        \toprule
+        \textbf{Trong code} & \textbf{Nghĩa là gì?}\\\midrule
+        patients & Người bệnh\\
+        encounters & Mỗi lượt khám / nhập viện\\
+        lab\_results & Mỗi kết quả xét nghiệm\\
+        medications & Các y lệnh thuốc\\
+        vitals & Các lần đo sinh hiệu\\
+        bed\_events & Gán / chuyển / trả giường\\\bottomrule
+      \end{tabular}}
+    \column{0.29\textwidth}
+      \bigstat{1.000}{bệnh nhân giả lập}\par\vspace{8mm}
+      {\small Chương trình tự sinh dữ liệu.\par Cùng \textbf{seed + cấu hình}\par → tạo lại cùng bộ.}
+  \end{columns}
+  \source{docs/data-model.md; docs/demo-script.md · Bộ mặc định PATIENTS=1000, SEED=42, đo 25/10/2026.}
+  \note{Data là các thông tin được ghi lại thành dòng và cột, giống một sheet Excel. Một bệnh nhân có thể quay lại nhiều lần, mỗi lượt có nhiều xét nghiệm và lần đo. Vì thế 1.000 bệnh nhân tạo ra nhiều hơn 1.000 dòng dữ liệu. Seed là số dùng để khởi tạo việc chọn ngẫu nhiên.}
+\end{frame}
+
+% 03 · A relationship diagram, with no personal identities.
+\begin{frame}{Mã người và mã lượt giúp nối đúng thông tin.}
+  \vspace{2mm}
+  \begin{tikzpicture}
+    \node[box,text width=66mm,minimum height=28mm] (patient) at (0,0) {\textbf{P001}\\Một bệnh nhân};
+    \node[box,text width=76mm,minimum height=28mm] (encounter) at (9.3,0) {\textbf{E001 thuộc P001}\\Một lượt nhập viện};
+    \node[box,text width=76mm,minimum height=28mm] (lab) at (19.3,0) {\textbf{L001 thuộc E001}\\Một kết quả xét nghiệm};
+    \draw[flow] (patient) -- (encounter);
+    \draw[flow] (encounter) -- (lab);
+  \end{tikzpicture}\par
+  \vspace{10mm}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.62\textwidth}
+      \textbf{patient\_id:} của người nào?\par\vspace{4mm}
+      \textbf{encounter\_id:} trong lượt nào?
+    \column{0.31\textwidth}
+      {\small Một người quay lại khám sẽ có mã lượt mới.}
+  \end{columns}
+  \source{docs/data-model.md · Mã P001 / E001 / L001 được rút gọn để minh họa.}
+  \note{Mã trên xét nghiệm trỏ về lượt khám; lượt khám trỏ về người bệnh. Đây là quan hệ giữa các bảng. Không cần dùng tên thật. Nếu lượt khám không hợp lệ thì dữ liệu con cũng cần kiểm tra, tránh đưa xét nghiệm của lượt lỗi vào báo cáo sạch.}
+\end{frame}
+
+% 04 · Two questions explain Lambda before the term is introduced.
+\begin{frame}{Tổng kết quá khứ và theo dõi việc mới cần hai nhánh.}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.54\textwidth}
+      \labeltext{BATCH = XỬ LÝ THEO LÔ}\par\vspace{5mm}
+      {\fontsize{29}{36}\selectfont\bfseries “Tháng trước, mỗi khoa\par có bao nhiêu lượt?”\par}\vspace{7mm}
+      Đọc một tập file lịch sử,\par kiểm tra rồi tính lại đầy đủ.
+    \column{0.40\textwidth}
+      \labeltext{STREAM = XỬ LÝ LIÊN TỤC}\par\vspace{5mm}
+      {\fontsize{29}{36}\selectfont\bfseries “Trong 5 phút vừa rồi\par có thêm bao nhiêu ca?”\par}\vspace{7mm}
+      Nhận các thông báo mới,\par xử lý thành từng đợt nhỏ.
+  \end{columns}
+  \vspace{10mm}
+  {\small\color{teal}\textbf{Lambda Architecture:} tổ chức cả hai nhánh và lớp phục vụ kết quả.}
+  \source{plan.md §10–11; docs/architecture.md. Câu hỏi realtime là mục tiêu; hiện stream mới lưu được vào Bronze.}
+  \note{Event chỉ là thông báo có việc xảy ra: một người vừa nhập viện, có mã lượt và giờ xảy ra. Dùng hai nhánh vì tổng kết một tập dữ liệu lớn và cập nhật chuyện vừa xảy ra có nhu cầu khác nhau. Không cần hiểu Lambda như công thức toán.}
+\end{frame}
+
+% 05 · The three layer names are paired with their meaning immediately.
+\begin{frame}{Giữ bản gốc, tạo bản sạch rồi tính bảng tổng hợp.}
+  \begin{tikzpicture}[node distance=7mm]
+    \node[box,text width=78mm,minimum height=40mm] (bronze) {\textbf{Bronze = bản gốc}\\Giữ cả dòng trùng,\\tên khoa ER, dòng sai.};
+    \node[box,text width=78mm,minimum height=40mm,right=of bronze] (silver) {\textbf{Silver = bản sạch}\\Gộp bản sao; chuẩn hóa\\ER → EMERGENCY.};
+    \node[box,text width=78mm,minimum height=40mm,right=of silver] (gold) {\textbf{Gold = tổng hợp}\\Đếm lượt nhập viện\\theo ngày và khoa.};
+    \draw[flow] (bronze) -- (silver); \draw[flow] (silver) -- (gold);
+  \end{tikzpicture}\par
+  \vspace{8mm}
+  {\fontsize{26}{33}\selectfont\bfseries 3.094 gốc = 3.058 hợp lệ + 31 bản sao + 5 lỗi}\par
+  \vspace{4mm}
+  {\small Dòng lỗi giữ trong \textbf{quarantine}: khu riêng, có lý do để tra lại.}
+  \source{docs/demo-script.md; docs/slides/checkpoint-1.tex · Số đo bảng encounters ngày 25/10/2026.}
+  \note{Ba tên này là ba mức dữ liệu, không phải ba phần mềm hoặc ba ổ đĩa. Năm dòng lỗi là giờ ra viện trước giờ vào; chúng vẫn có bản gốc trong Bronze và bản ghi kèm lý do trong quarantine. Chỉ dòng hợp lệ mới được dùng tính Gold.}
+\end{frame}
+
+% 06 · Role mapping distinguishes computation, storage, table management, querying.
+\begin{frame}{Mỗi công nghệ phụ trách một công việc.}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.21\textwidth}
+      \textbf{Spark}\par\vspace{6mm}
+      \textbf{MinIO}\par\vspace{6mm}
+      \textbf{Iceberg}\par\vspace{6mm}
+      \textbf{Trino}
+    \column{0.76\textwidth}
+      Đọc, kiểm tra và tính toán dữ liệu.\par\vspace{6mm}
+      Giữ các file dữ liệu trong kho.\par\vspace{6mm}
+      Tổ chức file thành bảng có metadata và phiên bản.\par\vspace{6mm}
+      Đọc bảng và trả lời câu hỏi viết bằng SQL.
+  \end{columns}
+  \vspace{8mm}
+  {\small\textbf{Lakehouse ở đây = MinIO + Iceberg.}\quad Bronze / Silver / Gold cùng nằm trong kho này.}
+  \source{docs/architecture.md; plan.md §3, §7, §12.}
+  \note{Spark là đội làm việc, MinIO là kho file, Iceberg là cách quản lý file và cấu trúc bảng. Catalog giống quầy tra cứu vị trí bảng. Trino là bên nhận câu hỏi và trả lời từ bảng. SQL là ngôn ngữ để viết câu hỏi, ví dụ đếm số lượt theo khoa. Dùng ví dụ để phân biệt chỗ lưu và công cụ xử lý.}
+\end{frame}
+
+% 07 · Current architecture only; future serving is a separate dashed note.
+\begin{frame}{Hai nhánh dùng chung kho; stream hiện tới Bronze.}
+  \begin{tikzpicture}[x=1mm,y=1mm]
+    \node[anchor=west,font=\fontsize{13}{17}\selectfont\bfseries,text=teal] at (-1,17) {NHÁNH LỊCH SỬ / ĐÃ CHẠY};
+    \node[box,text width=45mm,minimum height=18mm] (file) at (25,0) {File nguồn};
+    \node[box,text width=45mm,minimum height=18mm] (sp) at (88,0) {Spark};
+    \node[box,text width=72mm,minimum height=18mm] (layers) at (164,0) {Bronze → Silver → Gold};
+    \node[box,text width=52mm,minimum height=18mm] (trino) at (245,0) {Trino / SQL};
+    \draw[flow] (file) -- (sp); \draw[flow] (sp) -- (layers); \draw[flow] (layers) -- (trino);
+    \node[anchor=west,font=\fontsize{13}{17}\selectfont\bfseries,text=teal] at (-1,-22) {NHÁNH SỰ KIỆN MỚI / ĐÃ CHẠY ĐẾN KHO};
+    \node[box,text width=45mm,minimum height=22mm] (sim) at (25,-42) {Simulator\\giả lập sự kiện};
+    \node[box,text width=45mm,minimum height=22mm] (kf) at (88,-42) {Kafka\\giữ thông báo};
+    \node[box,text width=72mm,minimum height=22mm] (ss) at (164,-42) {Spark Streaming\\đọc, kiểm tra liên tục};
+    \node[box,text width=52mm,minimum height=22mm] (bs) at (245,-42) {Bronze stream\\gốc / khu lỗi};
+    \draw[flow] (sim) -- (kf); \draw[flow] (kf) -- (ss); \draw[flow] (ss) -- (bs);
+    \node[box,text width=267mm,minimum height=10mm,font=\fontsize{17}{22}\selectfont] at (135,-76) {\textbf{Lưu chung: MinIO + Iceberg} · các lớp là bảng, không phải máy riêng};
+  \end{tikzpicture}\par
+  \vspace{3mm}
+  {\footnotesize\color{muted}\textbf{Kế hoạch:} streaming tính chỉ số → ClickHouse (đọc nhanh); Grafana (biểu đồ) lấy kết quả từ Trino / ClickHouse.}
+  \source{docs/architecture.md · Bản đồ hiện trạng, không phải cam kết hệ thống đã hoàn thiện mọi nhánh.}
+  \note{Ở đây kiến trúc là bản đồ luồng dữ liệu và trách nhiệm. Producer là bên gửi thông báo, consumer là bên đọc. Kafka lưu các thông báo có vị trí để Spark đọc tiếp. Đường streaming hiện ghi vào Bronze và quarantine; chưa có chỉ số trực tiếp hoặc dashboard. Kubernetes và Prometheus là các mốc triển khai, giám sát sau checkpoint.}
+\end{frame}
+
+% 08 · Evidence is dated, and performance limits sit beside the claim.
+\begin{frame}{Đã có kết quả thật; stream còn giới hạn bộ nhớ.}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.52\textwidth}
+      \labeltext{BATCH / ĐÃ CHẠY}\par\vspace{4mm}
+      \bigstat{11/11}{truy vấn trả kết quả}\par\vspace{6mm}
+      {\small Đủ sáu nhóm dữ liệu sạch.\par Bốn bảng tổng hợp Gold.}
+    \column{0.41\textwidth}
+      \labeltext{STREAM / BÀI THỬ 25/10}\par\vspace{4mm}
+      \bigstat{600.000}{thông báo đã vào Bronze}\par\vspace{6mm}
+      {\small Gửi 1.000/giây trong 10 phút;\par đủ sau khi xử lý hết phần chờ.}
+  \end{columns}
+  \vspace{7mm}
+  {\small\textbf{Giới hạn:} reader khoảng 950/giây; sau bài thử từng hết bộ nhớ và bị dừng.\par Chỉ số trực tiếp, biểu đồ và triển khai cụm máy là các bước tiếp theo.}
+  \source{docs/demo-script.md; docs/architecture.md; results/stream-gate.json trên máy đã chạy · 25/10/2026.}
+  \note{Không nói hệ thống chạy ổn định lâu dài. Trong bài thử không thiếu hoặc lặp vị trí Kafka; điều này không có nghĩa các sự kiện cùng event_id đã bị xóa khỏi Bronze. Reader local một lõi xử lý chậm hơn bên gửi nên có lag, nghĩa là số thông báo đang chờ. Khoảng 10 phút sau gate, reader từng bị OOM-kill ở giới hạn container 1,25 GiB; nguyên nhân mới là giả thuyết, chưa profile.}
+\end{frame}
+
+% 09 · The last main slide connects each requested checkpoint item to evidence.
+\begin{frame}{Demo chứng minh code, dữ liệu và kiến trúc đã sẵn sàng.}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.56\textwidth}
+      \labeltext{CHẠY TRÊN MÔI TRƯỜNG ĐÃ CHUẨN BỊ}\par\vspace{6mm}
+      \command{make up}\par\vspace{6mm}
+      \command{make batch PYTHON=.venv/bin/python}\par\vspace{6mm}
+      \command{make query PYTHON=.venv/bin/python}
+    \column{0.37\textwidth}
+      \textbf{Chỉ vào kết quả:}\par\vspace{5mm}
+      {\small Dữ liệu gốc → sạch → tổng hợp.\par\vspace{4mm}
+      Một câu hỏi → một bảng trả lời.\par\vspace{4mm}
+      Sơ đồ → giải thích hai nhánh.}
+  \end{columns}
+  \vspace{9mm}
+  {\fontsize{24}{31}\selectfont\bfseries Nhóm đã nối được đầu vào với kết quả phân tích.}\par
+  \source{docs/demo-script.md · Chuẩn bị Python, Docker Compose và cấu hình trước demo.\newline Repo: \href{https://github.com/hungtrab/hospital_lake}{github.com/hungtrab/hospital\_lake}. Bước tiếp: ổn định stream và xây chỉ số trực tiếp.}
+  \note{Mở repo cho thầy thấy code và lịch sử Git. Mở dữ liệu nguồn. Chạy batch hoặc dùng log vừa rehearsal nếu thời gian có hạn. Query 7 trả thời gian nằm viện trung bình theo khoa; query 11 trả các lý do dòng lỗi. Mở sơ đồ để giải thích hiện trạng và việc tiếp theo. Chạy thử để cache các jar trước buổi báo cáo. Bộ mặc định có batch ID ổn định: chạy lại có thể bỏ qua Bronze đã nhập, nhưng Silver và Gold được tính lại.}
+\end{frame}
+
+\pdfstringdefDisableCommands{\def\translate#1{#1}}
+\appendix
+% 10 · Reference appendix, kept out of the main narrative/Q&A closing slide.
+\begin{frame}{Phụ lục: mỗi nội dung đều có nguồn trong repo.}
+  \begin{columns}[T,onlytextwidth]
+    \column{0.31\textwidth}
+      {\small\textbf{plan.md}\par\vspace{6mm}
+      \textbf{docs/data-model.md}\par\vspace{6mm}
+      \textbf{docs/architecture.md}\par\vspace{6mm}
+      \textbf{docs/demo-script.md}\par\vspace{6mm}
+      \textbf{sql/trino/queries.sql}}
+    \column{0.66\textwidth}
+      {\small Mục tiêu và kiến trúc dự kiến.\par\vspace{6mm}
+      Sáu nhóm dữ liệu và quan hệ qua mã.\par\vspace{6mm}
+      Các thành phần đã chạy và giới hạn hiện tại.\par\vspace{6mm}
+      Lệnh tái lập và kết quả đo 25/10/2026.\par\vspace{6mm}
+      Mười một câu hỏi SQL trên dữ liệu thật.}
+  \end{columns}
+  \vspace{7mm}
+  {\small Bản giải thích đầy đủ, có ví dụ bấm thử: \textbf{docs/hospitallake-explained.html}.}\par
+  {\footnotesize\color{muted}Log đo ở results/ chỉ có trên máy đã chạy; không được commit vào repo.}
+  \note{Mở HTML trước để tự học các khái niệm. Khi hỏi đáp có thể trở lại slide 9 hoặc mở ví dụ Bronze / Silver / Gold trong HTML. Tài liệu data-model có vài đoạn lịch sử cũ; trạng thái hiện hành đối chiếu architecture và demo-script.}
+\end{frame}
+
+\end{document}

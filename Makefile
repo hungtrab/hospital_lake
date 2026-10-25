@@ -1,10 +1,11 @@
 PYTHON ?= python3
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then printf 'docker compose'; else printf 'docker-compose'; fi)
 
-.PHONY: kafka-recovery kafka-up kafka-stop kafka-topics kafka-smoke batch batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold gold-docker stream-bronze stream-bronze-docker stream-bronze-probe produce produce-dry-run query slides stream-gate
+.PHONY: kafka-recovery kafka-up kafka-stop kafka-topics kafka-smoke batch batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold gold-docker stream-bronze stream-bronze-docker stream-bronze-probe produce produce-dry-run query slides slides-explained stream-gate
 .DEFAULT_GOAL := help
 
 help:
+	@printf '%s\n' 'make slides-explained  Build the Vietnamese beginner Beamer deck; open docs/hospitallake-explained.html for the offline interactive guide'
 	@printf '%s\n' 'make kafka-topics  Safely create/validate Kafka topics' 'make kafka-recovery PYTHON=.venv/bin/python  Verify data/offset persistence after broker recreation'
 	@printf '%s\n' 'make kafka-up  Start optional local KRaft broker and bootstrap topics' 'make kafka-smoke PYTHON=.venv/bin/python  Verify host/internal keyed produce-consume' 'make kafka-stop  Stop Kafka; preserve its data volume'
 	@printf '%s\n' 'make batch-bronze BATCH_ID=demo-001 [INPUT_DIR=data/generated] [ENTITIES=patients]' 'make test-bronze Run local Spark/Iceberg ingestion checks'
@@ -202,3 +203,7 @@ kafka-recovery:
 # Checkpoint 1 Beamer deck (TeX Live with xelatex, latexmk, Metropolis and Fira fonts).
 slides:
 	latexmk -xelatex -interaction=nonstopmode -outdir=results/slides docs/slides/checkpoint-1.tex
+
+# Beginner companion; same XeLaTeX/Fira dependencies as the checkpoint deck.
+slides-explained:
+	latexmk -xelatex -halt-on-error -interaction=nonstopmode -outdir=results/slides docs/slides/hospitallake-explained.tex
