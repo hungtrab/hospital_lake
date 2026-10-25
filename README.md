@@ -359,7 +359,20 @@ daily department demand/utilization, and daily lab abnormal rates from
 replaces four Iceberg Gold tables using `sql/iceberg/create_gold_tables.sql`.
 Five example Trino queries are in `sql/trino/queries.sql`.
 
-Install Spark 3.5 / PySpark 3.5, use Java 17, and make the Iceberg REST catalog,
+In Compose (no host Spark needed), `make batch` ends with `make gold-docker`,
+which can also be run alone after Silver exists:
+
+```bash
+make gold-docker   # GOLD_AS_OF / GOLD_BED_CAPACITIES from .env (defaults in .env.example)
+```
+
+The defaults use the generator's `end_date` (`2026-09-01T00:00:00Z`) as the
+cutoff and a bed capacity for each of the five canonical departments. Measured
+on the 1,000-patient / seed 42 dataset (3,058 Silver encounters, 12,719 labs,
+3,934 bed events): 14,343 hourly rows, 2,373 department-day rows, 3,258
+lab-day rows and 14,343 ICU rows in about 18 s.
+
+For host-side Spark instead, install Spark 3.5 / PySpark 3.5, use Java 17, and make the Iceberg REST catalog,
 MinIO bucket, and Silver tables available. Export the settings in `.env.example`,
 using host-reachable endpoints when running Spark on the host. For example:
 
@@ -381,8 +394,7 @@ encounters only. Utilization is occupied patient-hours divided by configured
 bed-hours. The job rejects missing/duplicate encounter IDs and missing capacity;
 it does not silently discard them. Its Iceberg overwrite makes a retry at the
 same cutoff replace previous output. A local Spark test checks exact sample
-values; live Spark → Iceberg → Trino remains dependent on upstream Silver tables
-and the REST catalog.
+values in any host timezone (collected timestamps are keyed in UTC).
 
 ### TV3 Week 2: Parquet → Bronze Iceberg
 
