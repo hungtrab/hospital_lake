@@ -79,7 +79,8 @@ late/duplicate/invalid ones (counted in its progress log) and exits 0;
 any failed delivery is logged as `delivery_failures` and exits 1. The Kafka →
 Structured Streaming → Bronze reader runs with `make stream-bronze-docker`;
 `make stream-gate` is the Week 4 gate (1000 events/s for 10 minutes; measured
-25/10: 600,000 messages in Bronze exactly once, lag cleared 103 s after the
+25/10: 600,000 messages in Bronze exactly once; the one-core reader runs at
+~950 events/s, so lag grows during the run and cleared within ~103 s after the
 producer stopped). It takes about 12 minutes, so show its saved summary
 (`results/stream-gate.json`) rather than running it live.
 

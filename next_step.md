@@ -107,7 +107,7 @@ T1.1 Silver patients/encounters ──► T2.1 Silver clinical ──► T4.1 Go
 T2.2 Kafka local ──► T3.2 stream-bronze-docker ──► T1.3 producer (live test)
 ```
 
-Week 4 gate đầy đủ (1000 events/s chạy 10 phút): **đã PASS ngày 25/10** bằng `make stream-gate` (600.000 message vào Bronze đúng một lần; reader `local[1]` ≈950 event/s, lag về 0 sau 103 s khi producer dừng).
+Week 4 gate đầy đủ (1000 events/s chạy 10 phút): **đã PASS ngày 25/10** bằng `make stream-gate` (600.000 message vào Bronze đúng một lần; reader `local[1]` chỉ ≈950 event/s nên lag tăng dần tới 72k, về 0 trong khoảng 103 s sau khi producer dừng). Hạn chế đã biết: sink chạy `MERGE` trên toàn bảng Bronze mỗi micro-batch, nên với ~660k dòng reader chạm giới hạn 1,25 GiB và bị OOM-kill một lần sau gate. Việc tuần 5: MERGE có lọc theo offset hoặc append + dedup.
 
 Nếu T2.1 trễ: T4 vẫn test Gold bằng fixture; TV1 sẽ nhận phần `bed_events` để không chặn Gold (`AGENTS.md` §7 — task bị block).
 
