@@ -29,6 +29,10 @@ TV2 Week 2 provides six Bronze DDL contracts, daily hidden partitions and an ide
 
 ---
 
+TV2 Week 4 adds optional single-node KRaft Kafka, persistent data, safe topic
+bootstrap and host/internal keyed transport/recreation checks. `make kafka-up`
+starts only the Kafka profile. Spark Compose integration remains TV3 T3.2.
+
 ## 2. Top-level tree
 
 ```text
@@ -139,6 +143,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | Path | Content | TV | Wk |
 |---|---|---|---|
 | `docker/` | Dockerfiles, service configs mounted by `docker-compose.yml` (Trino catalog, MinIO bootstrap, Kafka topic init, …) | TV2 (TV4 for Trino) | 1, 4 |
+| `docker/kafka/` | `bootstrap-topics.sh`: create/validate hospital.events and hospital.dlq without deleting or repartitioning | TV2 | 4 |
 | `docker/minio/` | Pinned source Dockerfile; `bootstrap.sh` creates the warehouse bucket safely with authenticated S3 | TV2 | 1 |
 | `docker/iceberg-rest/` | REST fixture 1.9.0 image wrapper gives non-root catalog user ownership of persistent `/var/lib/iceberg` | TV2 | 1 |
 | `docker/trino/`, `docker/trino/catalog/` | Implemented single-node Trino config, 1 GiB JVM heap, Iceberg REST/S3 catalog with environment-provided credentials | TV4 | 1 |
@@ -164,6 +169,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | `bootstrap.sh` | One-time local setup | 1 |
 | `bootstrap_bronze.py` | TV2 Week 2: Spark job creating/validating six raw tables without rewriting data | 2 |
 | `bronze_smoke.py` | Host orchestration for isolated Parquet/Spark/S3/Trino contract checks, raw defects, reruns and explicit fixture cleanup | 2 |
+| `kafka_smoke.py` | TV2 T2.2: host/internal listener probes with patient keys/order, DLQ transport and optional broker recreation persistence; `kafka-smoke`, `kafka-recovery` | 4 |
 | `lakehouse_smoke.py` | TV2 Week 1: service checks, repeated bucket bootstrap, exact Spark/Trino row checks, optional storage/catalog recreation and isolated fixture cleanup | 1 |
 | `trino_smoke.py` | TV4: row-count check; `--check-stack` probes engine/catalog/count/data, `--compose` uses container CLI. Uses `TRINO_HOST`/`TRINO_PORT` or `--server`; returns nonzero on failure. | 1 |
 | `verify_bronze.py` | TV4: compare CSV/Parquet source count and stable-ID checksum with one Bronze `_batch_id` through Trino; `make verify-bronze` | 2 |
@@ -188,7 +194,7 @@ Scale/failure-injection scripts (Week 7) also go here.
 | Streaming Bronze tables | `bronze.stream_events_raw`, `bronze.stream_events_quarantine` | `sql/iceberg/create_stream_bronze_tables.sql` |
 | Silver tables | `silver.{patients,encounters,lab_results,medications,vitals,bed_events}` | `plan.md` §7.2 |
 | Gold tables | `gold.hospital_hourly_metrics`, `gold.department_daily_metrics`, `gold.icu_occupancy`, `gold.lab_daily_metrics`, `gold.patient_timeline`, `gold.hospital_current_state` | `plan.md` §7.3 |
-| Kafka topics | `hospital.{patient,encounter,lab,medication,vitals,bed,dlq}` | `plan.md` §6 |
+| Kafka topics | Implemented `hospital.events`, `hospital.dlq`; optional per-entity topics remain planned | `next_step.md` T2.2, `plan.md` §6 (single-event-topic alternative) |
 | Event envelope | `event_id`, `event_type`, `event_time`, `source`, `version`, `payload` | `plan.md` §6 |
 | ClickHouse tables | `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | `plan.md` §12.2 |
 | Env vars | `MINIO_*`, `KAFKA_BOOTSTRAP_SERVERS`, `CLICKHOUSE_*`, `TRINO_*`, `ICEBERG_CATALOG_URI`, `ICEBERG_WAREHOUSE`, `SPARK_MASTER`, `GOLD_AS_OF`, `GOLD_BED_CAPACITIES` | `plan.md` §26 → `.env.example`; Spark loader in `spark/common/config.py`; Gold job in `spark/batch/silver_to_gold.py` |
@@ -231,3 +237,8 @@ INFRA           infra/docker (local first) ──► infra/k8s + infra/helm (Wee
 Clinical Silver tests: `tests/unit/test_silver_clinical.py` cover FK propagation,
 raw quarantine, interval boundaries/nonfinite values, domain normalization,
 duplicates, lineage, reruns and all four DDL output schemas.
+
+Kafka local commands: `kafka-up`, `kafka-topics`, `kafka-stop`, `kafka-smoke`,
+`kafka-recovery`. Compose adds optional `kafka`/`kafka-init` and `kafka-data` volume.
+Host port/partition defaults are in `.env.example`; `tests/unit/test_kafka_smoke.py`
+checks probe failure/order behavior, partition input validation and profile isolation.
