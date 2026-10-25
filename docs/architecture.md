@@ -44,8 +44,8 @@ integration gate has passed.
 | Synthetic batch generator | Input | Six synthetic entities to Parquet/CSV | Implemented: `make generate-data`; validation: `make verify-generated` and `make validate-generator`. |
 | MinIO + Iceberg REST Catalog | Shared storage | S3 objects and Iceberg metadata | Local stack implemented: `make up`; persistent `minio-data` and `iceberg-catalog` volumes. |
 | Spark Bronze ingestion | Batch | Raw Parquet plus ingestion metadata to `bronze.*` | Implemented: `make bootstrap-bronze`, then `make batch-bronze-docker BATCH_ID=...`; verifier: `make verify-bronze BATCH_ID=...`. |
-| Bronze → Silver | Batch | Normalize and validate patients/encounters; quarantine rejected rows | Implemented for patients and encounters: `make batch-silver-docker SILVER_ENTITIES="patients encounters"`. Clinical entities await TV2's registry additions. |
-| Silver → Gold | Batch | Historical hospital, department, lab, and ICU metrics | Job and local Spark tests exist; complete execution awaits the required clinical Silver tables and the Compose Gold submission path. |
+| Bronze → Silver | Batch | Normalize and validate all six entities; quarantine rejected rows | Implemented for patients, encounters, labs, medications, vitals, and bed events: `make batch-silver-docker`. |
+| Silver → Gold | Batch | Historical hospital, department, lab, and ICU metrics | Job and local Spark tests exist; complete checkpoint execution awaits TV4's Compose Gold submission path. |
 | Trino | Serving | SQL over Iceberg tables | Local service implemented: `make trino-up`; SQL examples are in `sql/trino/queries.sql`. Historical outputs depend on completed Silver/Gold inputs. |
 | Event simulator | Speed input | Envelope events keyed by patient ID, with configurable defects | Implemented: `make produce-dry-run`; Kafka publishing uses `make produce` when a reachable Kafka broker is available. |
 | Kafka broker/topics | Speed transport | `hospital.events` and `hospital.dlq` | Local KRaft service is assigned to TV2 and is not present in the current `main`; run `make kafka-up` after that integration is merged. |
@@ -73,11 +73,9 @@ generators/batch_generator
 ```
 
 `make batch` currently generates data, bootstraps and ingests Bronze, verifies
-the Bronze batch, and rebuilds the registered Silver entities. It does not yet
-include Gold or the `make query` checkpoint target. The six-entity data model
-exists, but the current Silver transform registry only covers patients and
-encounters; the clinical tables must be integrated before claiming a complete
-Bronze → Silver → Gold run.
+the Bronze batch, and rebuilds all six registered Silver entities. It does not
+yet include Gold or the `make query` checkpoint target, so the complete
+Bronze → Silver → Gold → Trino checkpoint path still depends on TV4's work.
 
 The speed path stores each Kafka record in raw Bronze or quarantine, keyed for
 retry safety by Kafka coordinates. Event ID deduplication is a valid-only view
@@ -145,8 +143,20 @@ make up
 make batch
 make test
 make kafka-up                 # after TV2's Kafka service is merged
-make produce RATE=10 DURATION=30
+```
+
+Then start the stream reader in one terminal:
+
+```bash
 make stream-bronze-docker
+```
+
+While it is running, publish events in a second terminal and run the progress
+probe in a third:
+
+```bash
+make produce RATE=10 DURATION=30
+# Separate terminal:
 make stream-bronze-probe
 ```
 
