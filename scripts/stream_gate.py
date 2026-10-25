@@ -7,8 +7,9 @@ The gate records Kafka end offsets, runs the producer at the requested rate,
 samples Bronze (raw + quarantine) and Kafka every --interval seconds, then waits
 for the reader to catch up. It passes only if every Kafka offset produced during
 the run is in Bronze exactly once (contiguous per partition, no duplicates)
-within --catch-up seconds after the producer stops. A JSON summary is written to
---report so the measurement can be compared across runs.
+within --catch-up seconds after the producer stops, and only if Kafka received the
+full rate x duration quota. A JSON summary is written to --report (producer log
+beside it) so the measurement can be compared across runs.
 """
 
 import argparse
@@ -91,6 +92,24 @@ def total(offsets):
     return sum(offsets.values())
 
 
+def evaluate(start, end, coverage, *, rate, duration, producer_returncode,
+             catch_up_seconds, catch_up_limit):
+    """Return gate problems; empty means PASS."""
+    problems = check_coverage(start, end, coverage)
+    quota = int(rate * duration)
+    produced = total(end) - total(start)
+    if produced < quota:
+        problems.append(f"only {produced}/{quota} messages reached Kafka "
+                        f"({rate:g} events/s for {duration:g}s not sustained)")
+    if producer_returncode:
+        problems.append(f"producer exited {producer_returncode}")
+    if catch_up_seconds is None:
+        problems.append(f"Bronze did not catch up within {catch_up_limit:g}s after the producer stopped")
+    elif catch_up_seconds > catch_up_limit:
+        problems.append(f"catch-up took {catch_up_seconds:g}s (limit {catch_up_limit:g}s)")
+    return problems
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--rate", type=float, default=1000)
@@ -107,61 +126,75 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--report", type=Path, default=ROOT / "results" / "stream-gate.json")
     args = parser.parse_args(argv)
+    if args.rate <= 0 or args.duration <= 0 or args.interval <= 0 or args.catch_up <= 0:
+        parser.error("--rate, --duration, --interval and --catch-up must be positive")
 
     compose = [*shlex.split(os.environ.get("COMPOSE", "docker compose")), "--project-directory", str(ROOT),
                "-f", str(ROOT / "docker-compose.yml")]
     command = cli_command("trino", args.compose, args.server)
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    producer_log_path = args.report.with_suffix(".producer.log")
     samples = []
+    producer = None
+    producer_done_at = catch_up_seconds = None
     try:
         start = kafka_end_offsets(compose, args.topic)
         sql = coverage_sql(args.catalog, args.topic, start)
         print(f"start offsets {start}; producing {args.rate:g} events/s for {args.duration:g}s", flush=True)
-        producer = subprocess.Popen(
-            [args.python, "-m", "generators.stream_generator.producer", "--bootstrap-servers",
-             args.bootstrap_servers, "--topic", args.topic, "--rate", str(args.rate),
-             "--duration", str(args.duration)], cwd=ROOT, stderr=subprocess.PIPE, text=True)
+        with producer_log_path.open("w") as producer_log:  # a file never blocks the producer
+            producer = subprocess.Popen(
+                [args.python, "-m", "generators.stream_generator.producer", "--bootstrap-servers",
+                 args.bootstrap_servers, "--topic", args.topic, "--rate", str(args.rate),
+                 "--duration", str(args.duration)], cwd=ROOT, stderr=producer_log)
         started = time.monotonic()
-        producer_done_at = None
-        while True:
+        deadline = args.duration + args.catch_up + 3 * args.interval + 120
+        while time.monotonic() - started < deadline:
             time.sleep(args.interval)
-            now = time.monotonic() - started
+            # Detect the producer's exit before the slow queries so catch-up is not overstated.
+            if producer_done_at is None and producer.poll() is not None:
+                producer_done_at = time.monotonic() - started
             end = kafka_end_offsets(compose, args.topic)
             ingested = sum(c[1] for c in read_coverage(command, sql, args.timeout).values())
+            now = time.monotonic() - started
             produced = total(end) - total(start)
             sample = {"t": round(now, 1), "kafka": produced, "bronze": ingested, "lag": produced - ingested}
             samples.append(sample)
             print(json.dumps(sample), flush=True)
-            if producer_done_at is None and producer.poll() is not None:
-                producer_done_at = now
-            if producer_done_at is not None and sample["lag"] <= 0:
-                break
-            if producer_done_at is not None and now - producer_done_at > args.catch_up:
-                break
-        producer_log = producer.stderr.read().strip().splitlines()
+            if producer_done_at is not None:
+                if sample["lag"] <= 0:
+                    catch_up_seconds = round(now - producer_done_at, 1)
+                    break
+                if now - producer_done_at > args.catch_up:
+                    break
         end = kafka_end_offsets(compose, args.topic)
         coverage = read_coverage(command, sql, args.timeout)
     except (OSError, subprocess.TimeoutExpired, ValueError, csv.Error) as error:
         print(f"FAIL stream gate: {error}", file=sys.stderr)
         return 1
+    finally:
+        if producer is not None and producer.poll() is None:
+            producer.terminate()
+            producer.wait(timeout=30)
 
-    produced = total(end) - total(start)
-    problems = check_coverage(start, end, coverage)
-    if producer.returncode:
-        problems.append(f"producer exited {producer.returncode}")
-    last_stats = next((json.loads(line) for line in reversed(producer_log)
+    producer_lines = producer_log_path.read_text().splitlines()
+    last_stats = next((json.loads(line) for line in reversed(producer_lines)
                        if line.startswith("{") and "events_sent" in line), {})
+    problems = evaluate(start, end, coverage, rate=args.rate, duration=args.duration,
+                        producer_returncode=producer.returncode, catch_up_seconds=catch_up_seconds,
+                        catch_up_limit=args.catch_up)
     report = {
         "rate_target": args.rate, "duration_seconds": args.duration,
-        "kafka_messages": produced, "bronze_rows": sum(c[1] for c in coverage.values()),
+        "interval_seconds": args.interval, "catch_up_limit_seconds": args.catch_up,
+        "kafka_messages": total(end) - total(start),
+        "bronze_rows": sum(c[1] for c in coverage.values()),
         "producer": last_stats,
         "producer_events_per_second": last_stats.get("events_per_second"),
         "max_lag_messages": max((s["lag"] for s in samples), default=None),
-        "catch_up_seconds": (round(samples[-1]["t"] - producer_done_at, 1)
-                             if samples and producer_done_at is not None else None),
+        # Measured at sampling granularity: an upper bound within one --interval.
+        "catch_up_seconds": catch_up_seconds,
         "start_offsets": start, "end_offsets": end, "samples": samples,
         "problems": problems, "status": "FAIL" if problems else "PASS",
     }
-    args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2) + "\n")
     summary = {k: report[k] for k in ("status", "kafka_messages", "bronze_rows",
                                       "producer_events_per_second", "max_lag_messages",
