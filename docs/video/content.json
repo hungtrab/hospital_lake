@@ -1,0 +1,85 @@
+{
+  "id": "HospitalLakeIntroduction",
+  "title": "HospitalLake — từ ghi chép bệnh viện đến số liệu có ích",
+  "voice": "Hải Đăng",
+  "model": "pnnbao-ump/VieNeu-TTS-v3-Turbo",
+  "speed": 0.864,
+  "relative_speed": 1.2,
+  "fps": 30,
+  "lead_seconds": 0.8,
+  "tail_seconds": 1.8,
+  "evidence_date": "25/10/2026",
+  "sources": ["docs/architecture.md", "docs/data-model.md", "docs/demo-script.md", "sql/trino/queries.sql"],
+  "scenes": [
+    {
+      "title": "Gom ghi chép thành câu trả lời",
+      "visual": "problem",
+      "eyebrow": "01 / NHÓM ĐANG LÀM GÌ?",
+      "beats": ["Quầy tiếp nhận", "phòng xét nghiệm", "HospitalLake", "mỗi khoa"],
+      "parts": [{"text": "Hãy hình dung một bệnh viện. Quầy tiếp nhận ghi người vào viện, phòng xét nghiệm ghi kết quả, điều dưỡng ghi giường bệnh. Muốn biết tình hình toàn viện, ta cần nối những ghi chép này lại. HospitalLake là hệ thống nhóm đang xây để làm việc đó: gom dữ liệu, kiểm tra rồi tính số liệu. Chẳng hạn, mỗi khoa có bao nhiêu lượt nhập viện, hoặc trung bình một lượt nằm viện kéo dài bao lâu. Trong video này, ta sẽ đi từ ví dụ cụ thể, rồi mới gọi tên các công nghệ."}]
+    },
+    {
+      "title": "Một người, nhiều loại dữ liệu",
+      "visual": "entities",
+      "eyebrow": "02 / DATA LÀ NHỮNG GÌ ĐƯỢC GHI LẠI",
+      "beats": ["bảng Excel", "sáu nhóm", "Chương trình", "giả lập"],
+      "parts": [{"text": "Dữ liệu có thể hình dung như bảng Excel: mỗi dòng là một bản ghi, mỗi cột là một thông tin. Nhóm có sáu nhóm dữ liệu: bệnh nhân, lượt khám hoặc nhập viện, kết quả xét nghiệm, y lệnh thuốc, lần đo sinh hiệu và sự kiện giường bệnh. Một người có thể quay lại nhiều lần, mỗi lượt lại có nhiều xét nghiệm. Chương trình của nhóm tự tạo các bảng có liên hệ với nhau. Đây là dữ liệu giả lập, không phải hồ sơ bệnh nhân thật. Giữ cùng cấu hình và số khởi tạo sẽ tạo lại được cùng bộ dữ liệu."}]
+    },
+    {
+      "title": "Mã người và mã lượt nối các bảng",
+      "visual": "relationships",
+      "eyebrow": "03 / BIẾT CỦA AI, TRONG LƯỢT NÀO",
+      "beats": ["mã riêng", "lượt mới", "Nhờ mã người", "Nhờ mã lượt"],
+      "parts": [{"text": "Ta gán cho mỗi người một mã riêng. Mỗi lần người đó tới khám hoặc nhập viện lại có một mã lượt mới. Kết quả xét nghiệm giữ cả mã người và mã lượt. Nhờ mã người, ta biết kết quả của ai. Nhờ mã lượt, ta biết nó thuộc lần điều trị nào. Như vậy, một bệnh nhân có thể có nhiều lượt, còn một lượt có thể có nhiều kết quả xét nghiệm. Nối đúng các mã là điều kiện để báo cáo không gán nhầm dữ liệu."}]
+    },
+    {
+      "title": "Hai câu hỏi, hai cách xử lý",
+      "visual": "two-speeds",
+      "eyebrow": "04 / HIỂU Ý NGHĨA TRƯỚC KHI NHỚ TÊN",
+      "beats": ["tháng trước", "theo lô", "năm phút", "Lambda"],
+      "parts": [{"text": "Bây giờ có hai câu hỏi khác nhau. Câu thứ nhất: tháng trước, mỗi khoa có bao nhiêu lượt nhập viện? Ta đọc một tập dữ liệu lịch sử rồi tính lại đầy đủ. Đó là xử lý theo lô, còn gọi là batch. Câu thứ hai: trong năm phút vừa rồi có thêm bao nhiêu ca nhập viện? Ta cần liên tục nhận thông báo khi có việc mới. Đó là xử lý dòng sự kiện, còn gọi là streaming. Kiến trúc Lambda tổ chức cả hai nhánh này cùng lớp phục vụ kết quả. Nhánh lịch sử đã trả được số liệu; chỉ số trực tiếp sẽ hoàn thiện sau."}]
+    },
+    {
+      "title": "Bản gốc giữ cả những dòng chưa đúng",
+      "visual": "bronze",
+      "eyebrow": "05 / BRONZE = GIỮ BẢN GỐC",
+      "beats": ["năm dòng", "lặp hai lần", "ra viện", "Bronze", "đếm"],
+      "parts": [{"text": "Xem bộ ví dụ nhỏ gồm năm dòng lượt nhập viện. Lượt đầu lặp hai lần. Một dòng có giờ ra viện sớm hơn giờ nhập viện. Một dòng trỏ tới mã bệnh nhân không tồn tại. Ta vẫn giữ cả năm dòng trong bản gốc, để sau này tra lại nguồn và cách xử lý. Lớp giữ bản gốc này được gọi là Bronze. Có năm dòng trong file, liệu ta có nên đếm thành năm lượt nhập viện hợp lệ không? Hãy thử nghĩ một chút.", "pause_after": 3.0}]
+    },
+    {
+      "title": "Làm sạch trước khi tính tổng hợp",
+      "visual": "silver-gold",
+      "eyebrow": "06 / SILVER = SẠCH · GOLD = TỔNG HỢP",
+      "beats": ["hai lượt", "khu riêng", "Silver", "mỗi khoa", "Gold"],
+      "parts": [{"text": "Câu trả lời là không. Sau khi gộp bản sao, ta giữ được hai lượt hợp lệ. Hai dòng lỗi được chuyển vào khu riêng, kèm lý do để kiểm tra lại. Tên khoa viết tắt cũng được đổi về một tên thống nhất. Lớp dữ liệu sạch này gọi là Silver. Từ hai lượt hợp lệ, ta đếm theo khoa: mỗi khoa có một lượt. Đó là bảng tổng hợp, thuộc lớp Gold. Bronze, Silver và Gold chỉ là ba mức dữ liệu: gốc, sạch và tổng hợp. Chúng không phải ba phần mềm khác nhau."}]
+    },
+    {
+      "title": "Ai xử lý, ai lưu, ai trả lời?",
+      "visual": "roles",
+      "eyebrow": "07 / MỖI CÔNG NGHỆ CÓ MỘT CÔNG VIỆC",
+      "beats": ["Spark", "MinIO", "Iceberg", "Trino", "Lakehouse"],
+      "parts": [{"text": "Đến đây mới cần gọi tên công cụ. Spark là đội xử lý: đọc, kiểm tra và tính toán dữ liệu. MinIO là kho giữ các file. Iceberg tổ chức các file đó thành bảng có thông tin quản lý và phiên bản. Trino nhận câu hỏi viết bằng ngôn ngữ SQL, đọc các bảng rồi trả kết quả. Trong project này, MinIO và Iceberg tạo thành kho dữ liệu Lakehouse. Ba lớp gốc, sạch, tổng hợp đều nằm trong kho chung đó. Cách chia này giúp phân biệt công cụ tính toán, nơi lưu và công cụ truy vấn."}]
+    },
+    {
+      "title": "Ghép các công việc thành kiến trúc",
+      "visual": "architecture",
+      "eyebrow": "08 / KIẾN TRÚC = BẢN ĐỒ DỮ LIỆU ĐI ĐÂU",
+      "beats": ["nhánh lịch sử", "nhánh sự kiện", "Kafka", "Spark", "Bronze", "ClickHouse"],
+      "parts": [{"text": "Ở nhánh lịch sử, file nguồn đi qua Spark để tạo bản gốc, bản sạch và bảng tổng hợp. Trino đọc các bảng để trả lời câu hỏi. Ở nhánh sự kiện mới, chương trình giả lập gửi thông báo vào Kafka. Kafka giữ các thông báo có vị trí để bên xử lý đọc tiếp. Spark đọc liên tục, kiểm tra rồi ghi vào Bronze hoặc khu lỗi. Nhánh này hiện mới tới bước lưu vào kho. Theo kế hoạch, các chỉ số trực tiếp sẽ được đưa vào ClickHouse, rồi Grafana vẽ biểu đồ. Kubernetes là bước triển khai các dịch vụ trên cụm máy về sau."}]
+    },
+    {
+      "title": "Checkpoint đã có bằng chứng chạy thật",
+      "visual": "progress",
+      "eyebrow": "09 / KẾT QUẢ GHI NHẬN NGÀY 25/10/2026",
+      "beats": ["một nghìn", "ba nghìn", "mười một", "Thông báo", "bộ nhớ"],
+      "parts": [{"text": "Vậy nhóm đã làm được gì? Bộ mặc định có một nghìn bệnh nhân giả lập và hơn ba nghìn lượt khám hoặc nhập viện. Chạy một lệnh đã tạo được dữ liệu gốc, dữ liệu sạch và bốn bảng tổng hợp. Mười một câu hỏi phân tích đều trả kết quả từ dữ liệu đã xử lý. Thông báo mới cũng đã đi được từ chương trình giả lập qua Kafka và Spark vào kho. Tuy vậy, bộ xử lý dòng còn có lúc chậm hơn bên gửi và từng hết bộ nhớ. Vì thế nhóm chưa kết luận nó chạy ổn định lâu dài."}]
+    },
+    {
+      "title": "Cho thầy thấy đầu vào và kết quả",
+      "visual": "demo",
+      "eyebrow": "10 / MỘT CÂU CHUYỆN DEMO CÓ THỂ THEO KỊP",
+      "beats": ["mở kho mã nguồn", "khởi động", "chạy đường xử lý", "đặt một câu hỏi", "Tiếp theo"],
+      "parts": [{"text": "Khi báo cáo, hãy mở kho mã nguồn và sơ đồ kiến trúc. Trước hết, khởi động các dịch vụ. Sau đó, chạy đường xử lý dữ liệu để thấy bản gốc trở thành bản sạch và bảng tổng hợp. Cuối cùng, đặt một câu hỏi, chẳng hạn thời gian nằm viện trung bình theo khoa, rồi mở bảng kết quả. Như vậy, thầy nhìn thấy code thực sự chạy, dữ liệu đã có và các thành phần đã nối được với nhau. Tiếp theo, nhóm sẽ ổn định luồng sự kiện, bổ sung chỉ số trực tiếp, biểu đồ và triển khai cụm máy."}]
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+# Install PyTorch appropriate for the host separately, as in video_pipeline.md.
+vieneu==3.8.3
+transformers==4.57.6
+faster-whisper==1.2.1
