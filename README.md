@@ -537,7 +537,7 @@ make produce RATE=10 DURATION=30
 ```
 
 Compose connects to Kafka's internal listener from `STREAM_KAFKA_BOOTSTRAP_SERVERS`
-(`kafka:9092` by default). It stores its checkpoint and Maven cache in the
+(`kafka:29092` by default). It stores its checkpoint and Maven cache in the
 persistent `stream-state` Docker volume, so removing/recreating the one-off Spark
 container does not discard restart state. Set `STREAM_CHECKPOINT_LOCATION_DOCKER`
 to choose another path inside that volume. A live run still requires the Kafka

@@ -95,7 +95,7 @@ stream-bronze:
 	@test -n "$(CHECKPOINT_LOCATION)" || (echo 'CHECKPOINT_LOCATION is required and must persist across restarts' >&2; exit 2)
 	$(PYTHON) -m spark.streaming.kafka_to_bronze --bootstrap-servers "$(KAFKA_BOOTSTRAP_SERVERS)" --topics "$(KAFKA_TOPICS)" --starting-offsets "$(STARTING_OFFSETS)" --checkpoint-location "$(CHECKPOINT_LOCATION)"
 
-STREAM_KAFKA_BOOTSTRAP_SERVERS ?= kafka:9092
+STREAM_KAFKA_BOOTSTRAP_SERVERS ?= kafka:29092
 stream-bronze-docker:
 	STREAM_KAFKA_BOOTSTRAP_SERVERS="$(STREAM_KAFKA_BOOTSTRAP_SERVERS)" KAFKA_TOPICS="$(KAFKA_TOPICS)" KAFKA_STARTING_OFFSETS="$(STARTING_OFFSETS)" $(COMPOSE) run --rm stream-bronze
 

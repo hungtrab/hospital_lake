@@ -203,7 +203,7 @@ services:
       service: spark-smoke
     profiles: ['stream']
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: ${STREAM_KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_BOOTSTRAP_SERVERS: ${STREAM_KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
       KAFKA_TOPICS: ${KAFKA_TOPICS:-hospital.events}
       KAFKA_STARTING_OFFSETS: ${KAFKA_STARTING_OFFSETS:-latest}
       STREAM_CHECKPOINT_LOCATION: ${STREAM_CHECKPOINT_LOCATION_DOCKER:-/tmp/checkpoints/stream-bronze}

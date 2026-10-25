@@ -96,7 +96,7 @@ The current reader uses event time, validates the common envelope, and attaches
 a watermark when building the deduplicated streaming view. The Bronze sink
 retains malformed bytes and a reason string. The Compose reader uses the
 internal Kafka address (`STREAM_KAFKA_BOOTSTRAP_SERVERS`, default
-`kafka:9092`) and a persistent named Docker volume for Spark's Ivy cache and
+`kafka:29092`) and a persistent named Docker volume for Spark's Ivy cache and
 checkpoint data. Start Kafka and the Lakehouse services first, then run
 `make stream-bronze-docker`. A fresh deployment still needs the live integration
 check: valid events in raw Bronze, malformed events in quarantine, and no
