@@ -28,14 +28,22 @@ def command(config, *, submit="spark-submit"):
     ]
 
 
+def submit_env(config, base=None):
+    """Credentials via environment, and the repo root on PYTHONPATH for spark.common imports."""
+    env = dict(os.environ if base is None else base)
+    env["AWS_ACCESS_KEY_ID"] = config.minio_access_key
+    env["AWS_SECRET_ACCESS_KEY"] = config.minio_secret_key
+    env["AWS_REGION"] = config.minio_region
+    root = str(Path(__file__).resolve().parents[1])
+    env["PYTHONPATH"] = os.pathsep.join(p for p in (root, env.get("PYTHONPATH")) if p)
+    return env
+
+
 def main():
     config = SparkConfig.from_env()
     if not os.environ.get("GOLD_AS_OF") or not os.environ.get("GOLD_BED_CAPACITIES"):
         raise SystemExit("GOLD_AS_OF and GOLD_BED_CAPACITIES must be set")
-    env = os.environ.copy()
-    env["AWS_ACCESS_KEY_ID"] = config.minio_access_key
-    env["AWS_SECRET_ACCESS_KEY"] = config.minio_secret_key
-    env["AWS_REGION"] = config.minio_region
+    env = submit_env(config)
     subprocess.run(command(config, submit=env.get("SPARK_SUBMIT", "spark-submit")),
                    env=env, check=True)
 
