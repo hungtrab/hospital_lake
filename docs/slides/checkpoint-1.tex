@@ -170,7 +170,7 @@
     \item Có event trễ, trùng, lỗi định dạng có chủ đích; event lỗi vào quarantine, stream không dừng.
     \item Kill reader giữa chừng rồi chạy lại: nhờ checkpoint, Bronze vẫn đủ mọi offset, không trùng.
     \item Reader 1 core (\texttt{local[1]}) chỉ $\approx$950 event/s: lag tăng dần tới \GATELAG{} message, về 0 trong $\sim$\GATECATCHUP{} giây sau khi producer dừng.
-    \item \alert{Hạn chế đã biết:} sink \texttt{MERGE} trên toàn bảng Bronze mỗi micro-batch; với $\sim$660k dòng reader chạm giới hạn 1,25 GiB và bị OOM-kill một lần. Sửa ở tuần 5.
+    \item \alert{Hạn chế đã biết:} với $\sim$660k dòng, reader chạm giới hạn 1,25 GiB và bị OOM-kill một lần; nghi do sink \texttt{MERGE} toàn bảng mỗi micro-batch. Xử lý ở tuần 5.
   \end{itemize}
 \end{frame}
 
