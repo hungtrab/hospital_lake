@@ -452,7 +452,7 @@ file URI), `_ingested_at TIMESTAMP` (UTC), `_batch_id STRING`, `_event_id STRING
 (source `event_id`, otherwise null), and `_schema_version INT` (1). Source columns
 must not use these reserved names. Inputs and schemas are checked for all selected
 entities before any table is written. Unreadable Parquet fails the job visibly;
-domain validation/quarantine belongs to the upcoming Silver work.
+domain validation/quarantine is handled by the shared Silver entity registry.
 
 Each table is appended in one Iceberg commit. A retry with the same `BATCH_ID`
 compares the raw rows with the committed batch and skips identical tables, so it
@@ -583,3 +583,20 @@ and run `make test-stream-bronze`; the first run needs Maven access for Iceberg.
 ## 5. Team
 
 Four equal members (TV1–TV4). Work allocation and weekly integration gates are defined in [`works.md`](./works.md).
+
+### TV2 Week 3: clinical Silver
+
+```bash
+make batch-silver-docker  # all six entities; requires populated Bronze
+# Or rebuild clinical tables against current valid Silver encounters:
+make batch-silver-docker SILVER_ENTITIES="lab_results bed_events medications vitals"
+```
+
+The shared registry now includes all four clinical entities. Labs recalculate
+`is_abnormal`; beds normalize departments/event types; medications and vitals
+validate values/times. Orphan encounters, patient mismatches and invalid values
+are recorded in `silver.quarantine` with raw JSON and reason codes. Reruns
+recompute Silver and replace each entity's quarantine partition. See
+[clinical contracts](docs/data-model.md#week-3-clinical-silver-tv2-t21) for
+validation bounds, lineage and monthly partitions. This enables Gold's lab/bed
+inputs; the complete checkpoint gate still requires TV4's Gold/query integration.

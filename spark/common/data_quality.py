@@ -16,6 +16,8 @@ _REASON_CODE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 @dataclass(frozen=True)
 class QualityMetrics:
+    """Disjoint counts: duplicate_rows excludes rows already counted invalid."""
+
     input_rows: int
     valid_rows: int
     invalid_rows: int
@@ -117,8 +119,10 @@ def assess_dataframe(
 
         source_columns = list(frame.columns)
         candidates = tagged.where(F.size(_quoted(REASON_COLUMN)) == 0)
+        # A bad variant must not cause its conflicting valid sibling to win.
+        # The caller collapses exact duplicates before this key-level check.
         duplicate_keys_frame = (
-            candidates.groupBy(*[_quoted(name) for name in keys])
+            tagged.groupBy(*[_quoted(name) for name in keys])
             .count()
             .where(F.col("count") > 1)
             .select(*[_quoted(name) for name in keys])
@@ -134,6 +138,11 @@ def assess_dataframe(
             tagged.where(F.size(_quoted(REASON_COLUMN)) > 0)
             .select(*[_quoted(name) for name in source_columns], _quoted(REASON_COLUMN))
         )
+        invalid_conflicts = (invalid_rows_frame.join(duplicate_keys_frame, list(keys), "left_semi")
+                             .withColumn(REASON_COLUMN,
+                                         F.concat(_quoted(REASON_COLUMN), F.array(F.lit("DUPLICATE_KEY")))))
+        invalid_rows_frame = (invalid_rows_frame.join(duplicate_keys_frame, list(keys), "left_anti")
+                              .unionByName(invalid_conflicts))
         duplicate_quarantine = duplicate_rows.select(
             *[_quoted(name) for name in source_columns],
             F.array(F.lit("DUPLICATE_KEY")).alias(REASON_COLUMN),
