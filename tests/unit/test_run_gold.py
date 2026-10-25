@@ -2,7 +2,10 @@
 
 import unittest
 
-from scripts.run_gold import command
+import os
+from pathlib import Path
+
+from scripts.run_gold import command, submit_env
 from spark.common.config import SparkConfig
 
 
@@ -22,6 +25,14 @@ class GoldSubmitTests(unittest.TestCase):
         self.assertIn("silver_to_gold.py", rendered)
         self.assertNotIn("local-password", rendered)
         self.assertNotIn("local-user", rendered)
+
+    def test_submit_env_puts_repo_root_on_pythonpath(self):
+        config = SparkConfig.from_env({"MINIO_ACCESS_KEY": "u", "MINIO_SECRET_KEY": "p"})
+        root = str(Path(__file__).resolve().parents[2])
+        env = submit_env(config, {"PYTHONPATH": "/extra"})
+        self.assertEqual(env["PYTHONPATH"].split(os.pathsep), [root, "/extra"])
+        self.assertEqual((env["AWS_ACCESS_KEY_ID"], env["AWS_SECRET_ACCESS_KEY"]), ("u", "p"))
+        self.assertEqual(submit_env(config, {})["PYTHONPATH"], root)
 
 
 if __name__ == "__main__":
