@@ -180,8 +180,10 @@ def build_gold(spark, encounters, labs, bed_events, *, as_of, capacities):
 
 
 def main(argv=None):
-    from pyspark.sql import SparkSession
     from pyspark.sql import functions as F
+
+    from spark.common.config import SparkConfig
+    from spark.common.iceberg import create_spark_session
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--catalog", default="iceberg")
@@ -195,7 +197,9 @@ def main(argv=None):
     capacities = parse_capacities(args.bed_capacities)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     started = time.monotonic()
-    spark = SparkSession.builder.appName("hospital-lake-gold").getOrCreate()
+    # Same env-driven session as the Bronze/Silver jobs; spark-submit --conf values
+    # (scripts/run_gold.py) are kept and match SparkConfig.from_env().
+    spark = create_spark_session("hospital-lake-gold", SparkConfig.from_env())
     try:
         spark.conf.set("spark.sql.session.timeZone", "UTC")
         silver = {name: spark.table(f"{args.catalog}.silver.{name}")

@@ -242,6 +242,24 @@ services:
       - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.0,org.apache.iceberg:iceberg-aws-bundle:1.9.0
       - spark/batch/bronze_to_silver.py
 
+  gold:
+    extends:
+      service: spark-smoke
+    environment:
+      # Defaults match generators/batch_generator/config.yaml (end_date) and the
+      # five canonical departments; override in .env.
+      GOLD_AS_OF: ${GOLD_AS_OF:-2026-09-01T00:00:00Z}
+      GOLD_BED_CAPACITIES: ${GOLD_BED_CAPACITIES:-ICU=20,EMERGENCY=40,CARDIOLOGY=50,INTERNAL_MEDICINE=60,SURGERY=50}
+    entrypoint:
+      - /opt/spark/bin/spark-submit
+      - --driver-memory
+      - 512m
+      - --conf
+      - spark.jars.ivy=/tmp/ivy
+      - --packages
+      - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.0,org.apache.iceberg:iceberg-aws-bundle:1.9.0
+      - spark/batch/silver_to_gold.py
+
   bronze-smoke:
     extends:
       service: bronze-bootstrap

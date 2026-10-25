@@ -1,7 +1,7 @@
 PYTHON ?= python3
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then printf 'docker compose'; else printf 'docker-compose'; fi)
 
-.PHONY: kafka-recovery kafka-up kafka-stop kafka-topics kafka-smoke batch batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold stream-bronze stream-bronze-docker stream-bronze-probe produce produce-dry-run
+.PHONY: kafka-recovery kafka-up kafka-stop kafka-topics kafka-smoke batch batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold gold-docker stream-bronze stream-bronze-docker stream-bronze-probe produce produce-dry-run
 .DEFAULT_GOAL := help
 
 help:
@@ -9,14 +9,14 @@ help:
 	@printf '%s\n' 'make kafka-up  Start optional local KRaft broker and bootstrap topics' 'make kafka-smoke PYTHON=.venv/bin/python  Verify host/internal keyed produce-consume' 'make kafka-stop  Stop Kafka; preserve its data volume'
 	@printf '%s\n' 'make batch-bronze BATCH_ID=demo-001 [INPUT_DIR=data/generated] [ENTITIES=patients]' 'make test-bronze Run local Spark/Iceberg ingestion checks'
 	@printf '%s\n' 'make batch-bronze-docker BATCH_ID=demo-001  Run ingestion with Compose Spark and a read-only INPUT_DIR mount'
-	@printf '%s\n' 'make batch [PATIENTS=1000 SEED=42]  Full batch path: generate -> bootstrap Bronze -> ingest Bronze -> verify -> Silver (Gold: TV4 T4.1)'
+	@printf '%s\n' 'make batch [PATIENTS=1000 SEED=42]  Full batch path: generate -> bootstrap Bronze -> ingest Bronze -> verify -> Silver -> Gold'
 	@printf '%s\n' 'make batch-silver-docker [SILVER_ENTITIES="patients encounters"]  Rebuild Silver + quarantine from Bronze with Compose Spark (default: all entities)' 'make batch-silver PYTHON=.venv/bin/python  Same job with host PySpark (host-reachable endpoints required)'
 	@printf '%s\n' 'make produce KAFKA_BOOTSTRAP_SERVERS=localhost:9092 [RATE=1000 DURATION=60]  Publish simulated hospital events to Kafka' 'make produce-dry-run [RATE=1000 MAX_EVENTS=20]  Print simulated events as JSON lines (no Kafka)'
 	@printf '%s\n' 'make stream-bronze PYTHON=.venv/bin/python KAFKA_BOOTSTRAP_SERVERS=localhost:9092 CHECKPOINT_LOCATION=$$PWD/checkpoints/stream-bronze'
 	@printf '%s\n' 'make kafka-up && make stream-bronze-docker  Run the Compose Structured Streaming reader with persistent checkpoint volume'
 	@printf '%s\n' 'make bootstrap-bronze Create/validate six Bronze tables without rewriting data' 'make bronze-smoke PYTHON=.venv/bin/python  Validate Parquet/schema/S3/Trino/reruns in isolated tables'
 	@printf '%s\n' 'make minio-up    Build/start MinIO and bootstrap warehouse bucket' 'make minio-stop  Stop MinIO while preserving data' 'make bootstrap-bucket  Rerun bucket bootstrap safely' 'make test-minio  Verify S3 object persistence after recreating MinIO' 'make week1-smoke Verify Spark → Iceberg → Trino' 'make week1-recovery Verify the same fixture after recreating storage/catalog containers'
-	@printf '%s\n' 'make setup       Create .env and install Python dependencies' 'make generate-data PATIENTS=1000 SEED=42 [FORMAT=parquet|csv]' 'make verify-generated INPUT_DIR=data/generated' 'make validate-generator SCALES="10000 100000"'  'make config      Validate Compose configuration' 'make up          Start local services and wait for health checks' 'make down        Stop local services; preserve data volumes' 'make smoke-minio Verify MinIO readiness through its published port' 'make test        Run unit and verifier contract tests' 'make trino-config Validate Compose configuration' 'make trino-up    Start Trino and wait for readiness' 'make trino-stop  Stop Trino' 'make trino-smoke TABLE=iceberg.bronze.spark_smoke EXPECTED_ROWS=3' 'make verify-bronze BATCH_ID=<id> [ENTITIES="patients encounters ..."]' 'make gold        Submit Silver-to-Gold Spark batch job'
+	@printf '%s\n' 'make setup       Create .env and install Python dependencies' 'make generate-data PATIENTS=1000 SEED=42 [FORMAT=parquet|csv]' 'make verify-generated INPUT_DIR=data/generated' 'make validate-generator SCALES="10000 100000"'  'make config      Validate Compose configuration' 'make up          Start local services and wait for health checks' 'make down        Stop local services; preserve data volumes' 'make smoke-minio Verify MinIO readiness through its published port' 'make test        Run unit and verifier contract tests' 'make trino-config Validate Compose configuration' 'make trino-up    Start Trino and wait for readiness' 'make trino-stop  Stop Trino' 'make trino-smoke TABLE=iceberg.bronze.spark_smoke EXPECTED_ROWS=3' 'make verify-bronze BATCH_ID=<id> [ENTITIES="patients encounters ..."]' 'make gold        Submit Silver-to-Gold Spark batch job' 'make gold-docker Rebuild Gold from Silver in the Compose Spark image'
 
 setup:
 	@test -f .env || cp .env.example .env
@@ -85,6 +85,10 @@ verify-bronze:
 gold:
 	$(PYTHON) -m scripts.run_gold
 
+# Full Gold overwrite from Silver inside the Compose Spark image (GOLD_* from .env).
+gold-docker:
+	$(COMPOSE) run --rm gold
+
 stream-bronze-probe:
 	$(PYTHON) -m scripts.stream_bronze_probe --compose --duration 300 --min-events 1
 
@@ -146,13 +150,13 @@ batch-silver-docker:
 # reruns skip committed Bronze tables; changed inputs need a new PIPELINE_BATCH_ID.
 PIPELINE_BATCH_ID ?= synthetic-p$(PATIENTS)-s$(SEED)
 
-# Gold is appended by TV4's gold-docker target (next_step.md T4.1).
 batch:
 	$(MAKE) generate-data OUTPUT_DIR="$(INPUT_DIR)"
 	$(MAKE) bootstrap-bronze
 	$(MAKE) batch-bronze-docker BATCH_ID="$(PIPELINE_BATCH_ID)"
 	$(MAKE) verify-bronze BATCH_ID="$(PIPELINE_BATCH_ID)"
 	$(MAKE) batch-silver-docker
+	$(MAKE) gold-docker
 
 RATE ?= 1000
 DURATION ?= 60
