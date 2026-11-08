@@ -138,8 +138,13 @@ ingestion is available via `make batch-bronze-docker`. CSV API clean fixtures an
 
 | Path | Content | Wk |
 |---|---|---|
-| `provisioning/` | Datasources (Trino, ClickHouse, Prometheus) + dashboard providers | 5 |
-| `dashboards/` | JSON: Hospital Overview, Realtime Operations, Historical Analytics, Infrastructure | 5, 7 |
+| `provisioning/` | Week 5 Trino/ClickHouse datasource YAML and file dashboard provider; Prometheus follows in Week 7 | 5, 7 |
+| `dashboards/` | Generated JSON: Hospital Overview, Realtime Operations, Historical Analytics; Infrastructure follows in Week 7 | 5, 7 |
+
+`dashboard/grafana/build_dashboards.py` generates the three Week 5 JSON files;
+`make dashboard-build` refreshes them. Live panels use the Week 5 ClickHouse
+handoff contract documented in `dashboard/grafana/README.md`. `make dashboard-smoke`
+(`scripts/grafana_smoke.py`) checks provisioning and runs the Trino-backed panels.
 
 No manually-clicked dashboards; everything provisioned from these files.
 
