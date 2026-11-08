@@ -22,8 +22,13 @@ expect database `hospital` with these columns:
 | `realtime_lab_metrics` | `window_start`, `abnormal_labs` |
 
 Those tables and the ClickHouse service are not on `main` yet, so the column
-names and the `grafana_reader` account above are a proposal to reconcile with
-TV3's schema and sink.
+names and the `grafana_reader` account in
+`provisioning/datasources/hospital.yaml` are a proposal to reconcile with TV3's
+schema and sink. That datasource reads its password from
+`CLICKHOUSE_GRAFANA_PASSWORD`.
+
+"Patients by department" sums a per-day distinct count, so it reports
+patient-days: a patient staying six calendar days counts six times.
 
 Overview's available-beds panel covers the ICU only because Gold has no
 hospital-wide bed inventory. Its admissions and discharges use the latest Gold

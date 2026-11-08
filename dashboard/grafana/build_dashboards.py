@@ -46,14 +46,14 @@ def dashboard(uid, title, panels, *, refresh="", from_time="now-30d", to_time="n
 
 
 def build():
-    # The ClickHouse columns below are the TV1/TV2/TV3 handoff contract for
+    # The ClickHouse columns below are a proposed TV1/TV2/TV3 handoff for
     # Week 5. Historical panels only reference Gold columns already in main.
     overview = dashboard("hospital-overview", "Hospital Overview", [
         panel(1, "Current patients", CLICKHOUSE,
               "SELECT current_patients FROM hospital.realtime_hospital_state ORDER BY event_time DESC LIMIT 1", kind="stat", width=4),
         panel(2, "ICU occupancy", CLICKHOUSE,
               "SELECT icu_occupancy FROM hospital.realtime_hospital_state ORDER BY event_time DESC LIMIT 1", kind="stat", x=4, width=4),
-        panel(3, "Available ICU beds", TRINO,
+        panel(3, "Available ICU beds (latest Gold)", TRINO,
               'SELECT available_beds FROM iceberg.gold.icu_occupancy ORDER BY "timestamp" DESC LIMIT 1', kind="stat", x=8, width=4),
         panel(4, "Admissions (latest Gold day)", TRINO,
               f"SELECT sum(admissions) AS admissions FROM iceberg.gold.department_daily_metrics WHERE date = {LATEST_DAY}", kind="stat", x=12, width=6),
@@ -91,8 +91,8 @@ def build():
               "SELECT test_name, sum(total_tests) AS total_tests FROM iceberg.gold.lab_daily_metrics GROUP BY test_name ORDER BY total_tests DESC LIMIT 10", kind="table", y=8, x=12),
         panel(5, "Abnormal lab rate", TRINO,
               "SELECT CAST(date AS timestamp) AS time, CAST(sum(abnormal_tests) AS double) / nullif(sum(total_tests), 0) AS abnormal_rate FROM iceberg.gold.lab_daily_metrics GROUP BY date ORDER BY date", y=16),
-        panel(6, "Patients by department", TRINO,
-              "SELECT department, sum(unique_patients) AS patient_visits FROM iceberg.gold.department_daily_metrics GROUP BY department ORDER BY patient_visits DESC", kind="table", y=16, x=12),
+        panel(6, "Patients by department (patient-days)", TRINO,
+              "SELECT department, sum(unique_patients) AS patient_days FROM iceberg.gold.department_daily_metrics GROUP BY department ORDER BY patient_days DESC", kind="table", y=16, x=12),
     ], from_time=HISTORY_FROM, to_time=HISTORY_TO)
     return {
         "hospital-overview.json": overview,
