@@ -152,7 +152,7 @@
     },
     {
       "id": 6,
-      "title": "Patients by department",
+      "title": "Patients by department (patient-days)",
       "type": "table",
       "datasource": {
         "type": "trino-datasource",
@@ -162,7 +162,7 @@
         {
           "refId": "A",
           "format": 1,
-          "rawSQL": "SELECT department, sum(unique_patients) AS patient_visits FROM iceberg.gold.department_daily_metrics GROUP BY department ORDER BY patient_visits DESC"
+          "rawSQL": "SELECT department, sum(unique_patients) AS patient_days FROM iceberg.gold.department_daily_metrics GROUP BY department ORDER BY patient_days DESC"
         }
       ],
       "gridPos": {
