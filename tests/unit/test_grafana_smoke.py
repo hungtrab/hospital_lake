@@ -6,28 +6,35 @@ from unittest.mock import patch
 from scripts.grafana_smoke import EXPECTED, env_file, main
 
 
-def dashboard(uid, datasource_uid="hospital-trino", rows=2):
+def dashboard(uid, datasource_uid="hospital-trino", rows=2, kind="stat"):
     return {"dashboard": {"uid": uid, "panels": [{
-        "title": f"{uid} panel", "datasource": {"uid": datasource_uid},
+        "title": f"{uid} panel", "type": kind, "datasource": {"uid": datasource_uid},
         "targets": [{"refId": "A", "rawSQL": "SELECT x FROM t", "format": 1}],
     }]}}, rows
 
 
-def fake_request(dashboards, rows=2, search=None):
+def fake_request(dashboards, rows=2, search=None, field_type="number", missing_plugin=None):
     def request(_base, _auth, path, body=None):
+        if path.startswith("/api/plugins/"):
+            if missing_plugin and missing_plugin in path:
+                raise ValueError("HTTP 404: Plugin not found")
+            return {}
         if path.startswith("/api/search"):
             return [{"uid": uid} for uid in (search if search is not None else EXPECTED)]
         if path.startswith("/api/dashboards/uid/"):
             return dashboards[path.rsplit("/", 1)[1]]
-        return {"results": {"A": {"frames": [{"data": {"values": [list(range(rows))]}}]}}}
+        return {"results": {"A": {"frames": [{
+            "schema": {"fields": [{"name": "value", "type": field_type}]},
+            "data": {"values": [list(range(rows))]},
+        }]}}}
     return request
 
 
-def run(fake):
+def run(fake, argv=()):
     output = io.StringIO()
     with patch("scripts.grafana_smoke.request", fake), patch("scripts.grafana_smoke.env_file", return_value={}), \
             contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
-        code = main([])
+        code = main(list(argv))
     return code, output.getvalue()
 
 
@@ -65,6 +72,36 @@ class GrafanaSmokeTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("table not found", output)
         self.assertIn(f"{EXPECTED[0]} panel", output)
+
+    def test_plot_panels_fail_without_a_numeric_field(self):
+        code, output = run(fake_request(self.dashboards, field_type="string"))
+        self.assertEqual(code, 1)
+        self.assertIn("no numeric field", output)
+
+    def test_table_panels_may_hold_only_text(self):
+        self.dashboards = {uid: dashboard(uid, kind="table")[0] for uid in EXPECTED}
+        code, output = run(fake_request(self.dashboards, field_type="string"))
+        self.assertEqual(code, 0, output)
+
+    def test_missing_plugin_fails_once_the_wait_expires(self):
+        code, output = run(fake_request(self.dashboards, missing_plugin="trino-datasource"), ["--plugin-timeout", "0"])
+        self.assertEqual(code, 1)
+        self.assertIn("plugins not installed", output)
+
+    def test_dashboard_fetch_error_is_labelled_instead_of_raised(self):
+        def failing(base, auth, path, body=None):
+            if path.endswith(EXPECTED[1]):
+                raise ValueError("HTTP 500: boom")
+            return fake_request(self.dashboards)(base, auth, path, body)
+        code, output = run(failing)
+        self.assertEqual(code, 1)
+        self.assertIn(f"FAIL {EXPECTED[1]}: HTTP 500", output)
+
+    def test_panels_without_a_datasource_are_skipped(self):
+        self.dashboards[EXPECTED[0]]["dashboard"]["panels"] = [{"type": "row", "title": "Section"}]
+        code, output = run(fake_request(self.dashboards))
+        self.assertEqual(code, 0, output)
+        self.assertIn("SKIP", output)
 
     def test_env_file_parser_ignores_comments_and_missing_files(self):
         with patch("pathlib.Path.read_text", return_value="# note\nA=1\n\nB=x=y\n"), \
