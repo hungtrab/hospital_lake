@@ -1,6 +1,7 @@
 """Keep generated Grafana assets aligned with the implemented Gold contract."""
 
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -11,6 +12,14 @@ from dashboard.grafana.build_dashboards import CLICKHOUSE, TRINO, build
 
 ROOT = Path(__file__).resolve().parents[2]
 DASHBOARDS = ROOT / "dashboard" / "grafana" / "dashboards"
+SQL_WORDS = {"select", "from", "where", "group", "by", "order", "desc", "limit", "as", "cast",
+             "sum", "avg", "max", "nullif", "interval", "day"}
+
+
+def gold_columns():
+    ddl = (ROOT / "sql" / "iceberg" / "create_gold_tables.sql").read_text(encoding="utf-8")
+    tables = re.findall(r"iceberg\.gold\.(\w+) \((.*?)\) USING", ddl, re.S)
+    return {name: {line.split()[0].strip("`").lower() for line in body.split(",")} for name, body in tables}
 
 
 class GrafanaDashboardTests(unittest.TestCase):
@@ -37,6 +46,26 @@ class GrafanaDashboardTests(unittest.TestCase):
             sql = panel["targets"][0]["rawSQL"]
             table = sql.split("FROM iceberg.gold.", 1)[1].split()[0]
             self.assertIn(f"iceberg.gold.{table} (", ddl)
+
+    def test_trino_panels_only_reference_gold_columns(self):
+        columns = gold_columns()
+        for definition in build().values():
+            for panel in definition["panels"]:
+                if panel["datasource"] != TRINO:
+                    continue
+                sql = panel["targets"][0]["rawSQL"]
+                tables = re.findall(r"iceberg\.gold\.(\w+)", sql)
+                self.assertTrue(tables, panel["title"])
+                allowed = set().union(*(columns[table] for table in tables)) | SQL_WORDS
+                allowed |= {alias.lower() for alias in re.findall(r"\bAS (\w+)", sql)}
+                bare = re.sub(r"'[^']*'|iceberg\.gold\.\w+", " ", sql)
+                for word in re.findall(r"[A-Za-z_]\w*", bare):
+                    self.assertIn(word.lower(), allowed, f'{panel["title"]}: {sql}')
+
+    def test_abnormal_rate_is_a_double_because_decimals_reach_grafana_as_strings(self):
+        panels = build()["historical-analytics.json"]["panels"]
+        sql = next(panel for panel in panels if panel["title"] == "Abnormal lab rate")["targets"][0]["rawSQL"]
+        self.assertIn("CAST(sum(abnormal_tests) AS double)", sql)
 
     def test_overview_covers_plan_panels(self):
         titles = [panel["title"] for panel in build()["hospital-overview.json"]["panels"]]
