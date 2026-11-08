@@ -1,0 +1,20 @@
+apiVersion: 1
+prune: true
+datasources:
+  - name: Hospital Trino
+    uid: hospital-trino
+    type: trino-datasource
+    access: proxy
+    url: http://trino:8080
+  - name: Hospital ClickHouse
+    uid: hospital-clickhouse
+    type: grafana-clickhouse-datasource
+    access: proxy
+    jsonData:
+      host: clickhouse
+      port: 8123
+      protocol: http
+      username: grafana_reader
+      defaultDatabase: hospital
+    secureJsonData:
+      password: ${CLICKHOUSE_GRAFANA_PASSWORD}
