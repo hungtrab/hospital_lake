@@ -172,12 +172,13 @@ MinIO is built from pinned upstream source; the first build downloads Go and
 source dependencies. If an existing `.env` has the retired upstream image name,
 set `MINIO_IMAGE=hospital-lake/minio:RELEASE.2025-04-22T22-12-26Z`.
 `make up` starts MinIO, runs `minio-init` to create the bucket named by
-`ICEBERG_WAREHOUSE`, then starts Iceberg REST and Trino. An existing bucket is
+`ICEBERG_WAREHOUSE`, then starts Iceberg REST, Trino and Grafana. An existing bucket is
 checked and preserved. `make bootstrap-bucket` safely repeats that step.
 `make minio-up` starts storage and bucket bootstrap only.
 
 MinIO console: http://localhost:9001; S3 API: http://localhost:9000;
-REST API: http://localhost:8181/v1/config; Trino: http://localhost:8080.
+REST API: http://localhost:8181/v1/config; Trino: http://localhost:8080;
+Grafana: http://localhost:3000.
 Ports can be configured in `.env`. Containers use `minio:9000` and
 `iceberg-rest:8181`; host-side jobs need reachable host addresses instead.
 Credentials are local synthetic-data defaults in `.env`, which must not be committed.

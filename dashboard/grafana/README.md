@@ -2,13 +2,16 @@
 
 Run `make dashboard-build` after editing panel SQL, then `make dashboard` (or
 `docker compose up -d --wait`). Grafana is served at `http://localhost:3000`
-unless `GRAFANA_PORT` is changed. Provisioning loads three dashboards without
-UI setup. `GRAFANA_ADMIN_PASSWORD` falls back to `admin` when an older `.env`
+unless `GRAFANA_PORT` is changed. Provisioning is written to load three
+dashboards without UI setup; **this has not yet been run against a live stack**.
+`GRAFANA_ADMIN_PASSWORD` falls back to `admin` when an older `.env`
 lacks it; the port is published on loopback only.
 
 After `make batch`, `make dashboard-smoke` confirms all three dashboards are
 provisioned and runs every Trino-backed panel through Grafana, failing on query
-errors or empty results. ClickHouse panels are reported as `SKIP`.
+errors, empty results, or a time series/stat panel with no numeric field.
+It waits for the plugins, which Grafana installs in the background after
+reporting healthy. ClickHouse panels are reported as `SKIP`.
 
 Batch panels use the fixed default generator window (2025-01-01 to 2026-09-01)
 because Gold holds nothing after it. A unit test ties these bounds to
