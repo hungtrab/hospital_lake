@@ -162,6 +162,33 @@ services:
     networks:
       - hospital-lake
 
+  grafana:
+    image: grafana/grafana-oss:12.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_PLUGINS_PREINSTALL: grafana-clickhouse-datasource@4.22.1,trino-datasource@1.4.1
+      CLICKHOUSE_GRAFANA_PASSWORD: ${CLICKHOUSE_GRAFANA_PASSWORD:-}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports:
+      - '127.0.0.1:${GRAFANA_PORT:-3000}:3000'
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./dashboard/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./dashboard/grafana/dashboards:/var/lib/grafana/hospital-dashboards:ro
+    networks:
+      - hospital-lake
+    depends_on:
+      trino:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://localhost:3000/api/health']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
   spark-smoke:
     image: apache/spark:3.5.5-python3
     profiles: ['smoke']
@@ -305,6 +332,7 @@ volumes:
   iceberg-catalog:
   spark-ivy:
   stream-state:
+  grafana-data:
 
 networks:
   hospital-lake:
