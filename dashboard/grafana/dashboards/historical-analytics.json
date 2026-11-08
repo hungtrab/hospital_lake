@@ -1,0 +1,184 @@
+{
+  "uid": "historical-analytics",
+  "title": "Historical Analytics",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "tags": [
+    "HospitalLake",
+    "synthetic-data"
+  ],
+  "timezone": "utc",
+  "time": {
+    "from": "2025-01-01T00:00:00Z",
+    "to": "2026-09-01T00:00:00Z"
+  },
+  "refresh": "",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Admissions by day",
+      "type": "timeseries",
+      "datasource": {
+        "type": "trino-datasource",
+        "uid": "hospital-trino"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 0,
+          "rawSQL": "SELECT CAST(date AS timestamp) AS time, sum(admissions) AS admissions FROM iceberg.gold.department_daily_metrics GROUP BY date ORDER BY date"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 2,
+      "title": "Average length of stay (hours)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "trino-datasource",
+        "uid": "hospital-trino"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 0,
+          "rawSQL": "SELECT CAST(date AS timestamp) AS time, sum(avg_length_of_stay_hours * discharges) / nullif(sum(discharges), 0) AS hours FROM iceberg.gold.department_daily_metrics GROUP BY date ORDER BY date"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 3,
+      "title": "Bed utilization trend (mean across departments)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "trino-datasource",
+        "uid": "hospital-trino"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 0,
+          "rawSQL": "SELECT CAST(date AS timestamp) AS time, avg(bed_utilization) AS utilization FROM iceberg.gold.department_daily_metrics GROUP BY date ORDER BY date"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "title": "Top lab tests",
+      "type": "table",
+      "datasource": {
+        "type": "trino-datasource",
+        "uid": "hospital-trino"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 1,
+          "rawSQL": "SELECT test_name, sum(total_tests) AS total_tests FROM iceberg.gold.lab_daily_metrics GROUP BY test_name ORDER BY total_tests DESC LIMIT 10"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 5,
+      "title": "Abnormal lab rate",
+      "type": "timeseries",
+      "datasource": {
+        "type": "trino-datasource",
+        "uid": "hospital-trino"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 0,
+          "rawSQL": "SELECT CAST(date AS timestamp) AS time, CAST(sum(abnormal_tests) AS double) / nullif(sum(total_tests), 0) AS abnormal_rate FROM iceberg.gold.lab_daily_metrics GROUP BY date ORDER BY date"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "title": "Patients by department",
+      "type": "table",
+      "datasource": {
+        "type": "trino-datasource",
+        "uid": "hospital-trino"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 1,
+          "rawSQL": "SELECT department, sum(unique_patients) AS patient_visits FROM iceberg.gold.department_daily_metrics GROUP BY department ORDER BY patient_visits DESC"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    }
+  ],
+  "templating": {
+    "list": []
+  }
+}
