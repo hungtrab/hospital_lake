@@ -163,7 +163,7 @@ services:
       - hospital-lake
 
   grafana:
-    image: grafana/grafana-oss:12.2.0
+    image: grafana/grafana:12.2.0
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
@@ -176,6 +176,7 @@ services:
       - grafana-data:/var/lib/grafana
       - ./dashboard/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./dashboard/grafana/dashboards:/var/lib/grafana/hospital-dashboards:ro
+    mem_limit: 512m
     networks:
       - hospital-lake
     depends_on:

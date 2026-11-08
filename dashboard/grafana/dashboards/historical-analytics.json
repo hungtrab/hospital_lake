@@ -54,7 +54,7 @@
         {
           "refId": "A",
           "format": 0,
-          "rawSQL": "SELECT CAST(date AS timestamp) AS time, avg(avg_length_of_stay_hours) AS hours FROM iceberg.gold.department_daily_metrics GROUP BY date ORDER BY date"
+          "rawSQL": "SELECT CAST(date AS timestamp) AS time, sum(avg_length_of_stay_hours * discharges) / nullif(sum(discharges), 0) AS hours FROM iceberg.gold.department_daily_metrics GROUP BY date ORDER BY date"
         }
       ],
       "gridPos": {
@@ -71,7 +71,7 @@
     },
     {
       "id": 3,
-      "title": "Bed utilization trend",
+      "title": "Bed utilization trend (mean across departments)",
       "type": "timeseries",
       "datasource": {
         "type": "trino-datasource",
@@ -135,7 +135,7 @@
         {
           "refId": "A",
           "format": 0,
-          "rawSQL": "SELECT CAST(date AS timestamp) AS time, sum(abnormal_tests) * 1.0 / nullif(sum(total_tests), 0) AS abnormal_rate FROM iceberg.gold.lab_daily_metrics GROUP BY date ORDER BY date"
+          "rawSQL": "SELECT CAST(date AS timestamp) AS time, CAST(sum(abnormal_tests) AS double) / nullif(sum(total_tests), 0) AS abnormal_rate FROM iceberg.gold.lab_daily_metrics GROUP BY date ORDER BY date"
         }
       ],
       "gridPos": {

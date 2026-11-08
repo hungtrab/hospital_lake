@@ -63,7 +63,7 @@ def build():
               "SELECT hour AS time, admissions FROM iceberg.gold.hospital_hourly_metrics WHERE hour >= (SELECT max(hour) FROM iceberg.gold.hospital_hourly_metrics) - INTERVAL '7' DAY ORDER BY hour", y=5),
         panel(7, "Department occupancy", TRINO,
               f"SELECT department, unique_patients, bed_utilization FROM iceberg.gold.department_daily_metrics WHERE date = {LATEST_DAY} ORDER BY department", kind="table", y=5, x=12),
-    ], refresh="10s", from_time=RECENT_FROM, to_time=HISTORY_TO)
+    ], refresh="1m", from_time=RECENT_FROM, to_time=HISTORY_TO)
 
     realtime = dashboard("realtime-operations", "Realtime Operations", [
         panel(1, "Current patients", CLICKHOUSE,
@@ -84,13 +84,13 @@ def build():
         panel(1, "Admissions by day", TRINO,
               "SELECT CAST(date AS timestamp) AS time, sum(admissions) AS admissions FROM iceberg.gold.department_daily_metrics GROUP BY date ORDER BY date"),
         panel(2, "Average length of stay (hours)", TRINO,
-              "SELECT CAST(date AS timestamp) AS time, avg(avg_length_of_stay_hours) AS hours FROM iceberg.gold.department_daily_metrics GROUP BY date ORDER BY date", x=12),
-        panel(3, "Bed utilization trend", TRINO,
+              "SELECT CAST(date AS timestamp) AS time, sum(avg_length_of_stay_hours * discharges) / nullif(sum(discharges), 0) AS hours FROM iceberg.gold.department_daily_metrics GROUP BY date ORDER BY date", x=12),
+        panel(3, "Bed utilization trend (mean across departments)", TRINO,
               "SELECT CAST(date AS timestamp) AS time, avg(bed_utilization) AS utilization FROM iceberg.gold.department_daily_metrics GROUP BY date ORDER BY date", y=8),
         panel(4, "Top lab tests", TRINO,
               "SELECT test_name, sum(total_tests) AS total_tests FROM iceberg.gold.lab_daily_metrics GROUP BY test_name ORDER BY total_tests DESC LIMIT 10", kind="table", y=8, x=12),
         panel(5, "Abnormal lab rate", TRINO,
-              "SELECT CAST(date AS timestamp) AS time, sum(abnormal_tests) * 1.0 / nullif(sum(total_tests), 0) AS abnormal_rate FROM iceberg.gold.lab_daily_metrics GROUP BY date ORDER BY date", y=16),
+              "SELECT CAST(date AS timestamp) AS time, CAST(sum(abnormal_tests) AS double) / nullif(sum(total_tests), 0) AS abnormal_rate FROM iceberg.gold.lab_daily_metrics GROUP BY date ORDER BY date", y=16),
         panel(6, "Patients by department", TRINO,
               "SELECT department, sum(unique_patients) AS patient_visits FROM iceberg.gold.department_daily_metrics GROUP BY department ORDER BY patient_visits DESC", kind="table", y=16, x=12),
     ], from_time=HISTORY_FROM, to_time=HISTORY_TO)
