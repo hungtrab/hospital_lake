@@ -57,19 +57,29 @@ class GrafanaDashboardTests(unittest.TestCase):
                 tables = re.findall(r"iceberg\.gold\.(\w+)", sql)
                 self.assertTrue(tables, panel["title"])
                 allowed = set().union(*(columns[table] for table in tables)) | SQL_WORDS
-                allowed |= {alias.lower() for alias in re.findall(r"\bAS (\w+)", sql)}
-                bare = re.sub(r"'[^']*'|iceberg\.gold\.\w+", " ", sql)
-                for word in re.findall(r"[A-Za-z_]\w*", bare):
+                aliases = {alias.lower() for alias in re.findall(r"\bAS (\w+)", sql)}
+                bare = re.sub(r"'[^']*'|iceberg\.gold\.\w+|\bAS \w+", " ", sql)
+                # An alias may only be reused for ordering, so it cannot hide a bad column.
+                selected, _, ordering = bare.partition("ORDER BY")
+                for word in re.findall(r"[A-Za-z_]\w*", selected):
                     self.assertIn(word.lower(), allowed, f'{panel["title"]}: {sql}')
+                for word in re.findall(r"[A-Za-z_]\w*", ordering):
+                    self.assertIn(word.lower(), allowed | aliases, f'{panel["title"]}: {sql}')
 
     def test_abnormal_rate_is_a_double_because_decimals_reach_grafana_as_strings(self):
         panels = build()["historical-analytics.json"]["panels"]
         sql = next(panel for panel in panels if panel["title"] == "Abnormal lab rate")["targets"][0]["rawSQL"]
         self.assertIn("CAST(sum(abnormal_tests) AS double)", sql)
 
+    def test_patient_totals_across_days_are_labelled_patient_days(self):
+        panels = build()["historical-analytics.json"]["panels"]
+        panel = next(panel for panel in panels if panel["title"].startswith("Patients by department"))
+        self.assertIn("patient-days", panel["title"])
+        self.assertIn("AS patient_days", panel["targets"][0]["rawSQL"])
+
     def test_overview_covers_plan_panels(self):
         titles = [panel["title"] for panel in build()["hospital-overview.json"]["panels"]]
-        for expected in ("Current patients", "ICU occupancy", "Available ICU beds",
+        for expected in ("Current patients", "ICU occupancy", "Available ICU beds (latest Gold)",
                          "Admissions (latest Gold day)", "Discharges (latest Gold day)",
                          "Admissions by hour", "Department occupancy"):
             self.assertIn(expected, titles)

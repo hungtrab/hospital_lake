@@ -55,7 +55,8 @@ services:
       AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:?Copy .env.example to .env first}
       AWS_REGION: ${MINIO_REGION:-us-east-1}
       CATALOG_WAREHOUSE: ${ICEBERG_WAREHOUSE:-s3://warehouse/}
-      CATALOG_URI: jdbc:sqlite:/var/lib/iceberg/catalog.db
+      # Allow catalog reads alongside batch commits (Iceberg upstream #18044).
+      CATALOG_URI: jdbc:sqlite:/var/lib/iceberg/catalog.db?journal_mode=WAL
       CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
       CATALOG_S3_ENDPOINT: http://minio:9000
       CATALOG_S3_PATH__STYLE__ACCESS: 'true'

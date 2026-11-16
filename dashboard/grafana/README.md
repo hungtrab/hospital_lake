@@ -2,10 +2,19 @@
 
 Run `make dashboard-build` after editing panel SQL, then `make dashboard` (or
 `docker compose up -d --wait`). Grafana is served at `http://localhost:3000`
-unless `GRAFANA_PORT` is changed. Provisioning is written to load three
-dashboards without UI setup; **this has not yet been run against a live stack**.
+unless `GRAFANA_PORT` is changed. Provisioning loads three dashboards without UI setup. On 2026-11-16, a local
+Docker run with 1,000 generated patients loaded all three dashboards and passed
+all 11 Trino-backed panel queries. The eight ClickHouse panels were skipped
+because their serving dependency is not implemented.
 `GRAFANA_ADMIN_PASSWORD` falls back to `admin` when an older `.env`
 lacks it; the port is published on loopback only.
+
+The local SQLite catalog uses WAL mode so dashboard metadata reads can coexist
+with batch commits. The previous rollback-journal configuration produced
+`SQLITE_BUSY` failures during validation; see
+[Iceberg's upstream fix](https://github.com/apache/iceberg/pull/18044).
+Recreate the catalog with `docker compose up -d iceberg-rest` when upgrading;
+the existing catalog volume and tables are preserved.
 
 After `make batch`, `make dashboard-smoke` confirms all three dashboards are
 provisioned and runs every Trino-backed panel through Grafana, failing on query
@@ -27,10 +36,14 @@ expect database `hospital` with these columns:
 | `realtime_lab_metrics` | `window_start`, `abnormal_labs` |
 
 Those tables and the ClickHouse service are not on `main` yet, so the column
-names and the `grafana_reader` account above are a proposal to reconcile with
-TV3's schema and sink. Set `CLICKHOUSE_GRAFANA_PASSWORD` in `.env` to the
-read-only account password. The realtime panels show query errors until the
-serving tables exist; they do not display synthetic fallback numbers.
+names and the `grafana_reader` account in
+`provisioning/datasources/hospital.yaml` are a proposal to reconcile with TV3's
+schema and sink. Set `CLICKHOUSE_GRAFANA_PASSWORD` in `.env` to the read-only
+account password. The realtime panels show query errors until the serving
+tables exist; they do not display synthetic fallback numbers.
+
+"Patients by department" sums a per-day distinct count, so it reports
+patient-days: a patient staying six calendar days counts six times.
 
 Overview's available-beds panel covers the ICU only because Gold has no
 hospital-wide bed inventory. Its admissions and discharges use the latest Gold
