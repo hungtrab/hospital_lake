@@ -143,7 +143,7 @@ ingestion is available via `make batch-bronze-docker`. CSV API clean fixtures an
 
 `dashboard/grafana/build_dashboards.py` generates the three Week 5 JSON files;
 `make dashboard-build` refreshes them. Live panels use the Week 5 ClickHouse
-handoff contract documented in `dashboard/grafana/README.md`. The Grafana Compose
+handoff proposal documented in `dashboard/grafana/README.md`. The Grafana Compose
 service is not on `main` yet.
 
 No manually-clicked dashboards; everything provisioned from these files.
@@ -243,7 +243,7 @@ INFRA           infra/docker (local first) ──► infra/k8s + infra/helm (Wee
 | A new Spark helper used by >1 job | `spark/common/` |
 | A new Kafka event type | `generators/stream_generator/event_models.py` + parser in `spark/streaming/` + `plan.md` §6 list |
 | A new Gold table | `sql/iceberg/create_gold_tables.sql` + `spark/batch/silver_to_gold.py` + consumer (query/dashboard) |
-| A dashboard panel | `dashboard/grafana/dashboards/*.json` |
+| A dashboard panel | `dashboard/grafana/build_dashboards.py`, then `make dashboard-build` |
 | A config value | `.env.example` + `spark/common/config.py` (never hardcode) |
 | A one-off debug script | Don't commit it — or make it reusable in `scripts/` |
 | A new top-level command | `Makefile` target |
