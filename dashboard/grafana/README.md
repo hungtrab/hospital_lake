@@ -35,10 +35,10 @@ expect database `hospital` with these columns:
 | `realtime_department_metrics` | `window_start`, `department`, `admissions_5m`, `discharges_5m` |
 | `realtime_lab_metrics` | `window_start`, `abnormal_labs` |
 
-Those tables and the ClickHouse service are not on `main` yet, so the column
-names and the `grafana_reader` account in
-`provisioning/datasources/hospital.yaml` are a proposal to reconcile with TV3's
-schema and sink. Set `CLICKHOUSE_GRAFANA_PASSWORD` in `.env` to the read-only
+The TV3 serving branch implements this proposal as versioned storage plus
+query views; see `sql/clickhouse/README.md` for the revision and window contract.
+`make clickhouse-up` starts the optional service and provisions `grafana_reader`.
+The aggregate producers from TV1/TV2 still need to feed the serving sink. Set `CLICKHOUSE_GRAFANA_PASSWORD` in `.env` to the read-only
 account password. The realtime panels show query errors until the serving
 tables exist; they do not display synthetic fallback numbers.
 
