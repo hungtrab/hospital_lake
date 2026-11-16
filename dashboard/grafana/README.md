@@ -1,12 +1,26 @@
-# Week 5 Grafana definitions (TV4)
+# Week 5 Grafana (TV4)
 
-This directory holds the dashboards and provisioning as code. **No Grafana
-service runs from `main` yet**: the Compose service and the live smoke check are
-in a separate change until they have been run on a machine with Docker, so
-these files have not been loaded by a real Grafana.
+Run `make dashboard-build` after editing panel SQL, then `make dashboard` (or
+`docker compose up -d --wait`). Grafana is served at `http://localhost:3000`
+unless `GRAFANA_PORT` is changed. Provisioning loads three dashboards without UI setup. On 2026-11-16, a local
+Docker run with 1,000 generated patients loaded all three dashboards and passed
+all 11 Trino-backed panel queries. The eight ClickHouse panels were skipped
+because their serving dependency is not implemented.
+`GRAFANA_ADMIN_PASSWORD` falls back to `admin` when an older `.env`
+lacks it; the port is published on loopback only.
 
-Run `make dashboard-build` after editing panel SQL. Three dashboards are
-generated: Hospital Overview, Realtime Operations and Historical Analytics.
+The local SQLite catalog uses WAL mode so dashboard metadata reads can coexist
+with batch commits. The previous rollback-journal configuration produced
+`SQLITE_BUSY` failures during validation; see
+[Iceberg's upstream fix](https://github.com/apache/iceberg/pull/18044).
+Recreate the catalog with `docker compose up -d iceberg-rest` when upgrading;
+the existing catalog volume and tables are preserved.
+
+After `make batch`, `make dashboard-smoke` confirms all three dashboards are
+provisioned and runs every Trino-backed panel through Grafana, failing on query
+errors, empty results, or a time series/stat panel with no numeric field.
+It waits for the plugins, which Grafana installs in the background after
+reporting healthy. ClickHouse panels are reported as `SKIP`.
 
 Batch panels use the fixed default generator window (2025-01-01 to 2026-09-01)
 because Gold holds nothing after it. A unit test ties these bounds to
@@ -24,8 +38,9 @@ expect database `hospital` with these columns:
 Those tables and the ClickHouse service are not on `main` yet, so the column
 names and the `grafana_reader` account in
 `provisioning/datasources/hospital.yaml` are a proposal to reconcile with TV3's
-schema and sink. That datasource reads its password from
-`CLICKHOUSE_GRAFANA_PASSWORD`.
+schema and sink. Set `CLICKHOUSE_GRAFANA_PASSWORD` in `.env` to the read-only
+account password. The realtime panels show query errors until the serving
+tables exist; they do not display synthetic fallback numbers.
 
 "Patients by department" sums a per-day distinct count, so it reports
 patient-days: a patient staying six calendar days counts six times.

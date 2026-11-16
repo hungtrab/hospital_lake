@@ -113,6 +113,12 @@ class GrafanaDashboardTests(unittest.TestCase):
         for source in (TRINO, CLICKHOUSE):
             self.assertEqual(by_uid[source["uid"]], source["type"])
 
+    def test_grafana_never_blocks_compose_for_older_env_files(self):
+        compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+        grafana = compose["services"]["grafana"]
+        self.assertNotIn(":?", json.dumps(grafana["environment"]))
+        self.assertTrue(all(port.startswith("127.0.0.1:") for port in grafana["ports"]))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -55,7 +55,8 @@ services:
       AWS_SECRET_ACCESS_KEY: ${MINIO_SECRET_KEY:?Copy .env.example to .env first}
       AWS_REGION: ${MINIO_REGION:-us-east-1}
       CATALOG_WAREHOUSE: ${ICEBERG_WAREHOUSE:-s3://warehouse/}
-      CATALOG_URI: jdbc:sqlite:/var/lib/iceberg/catalog.db
+      # Allow catalog reads alongside batch commits (Iceberg upstream #18044).
+      CATALOG_URI: jdbc:sqlite:/var/lib/iceberg/catalog.db?journal_mode=WAL
       CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
       CATALOG_S3_ENDPOINT: http://minio:9000
       CATALOG_S3_PATH__STYLE__ACCESS: 'true'
@@ -161,6 +162,34 @@ services:
     restart: 'no'
     networks:
       - hospital-lake
+
+  grafana:
+    image: grafana/grafana:12.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_PLUGINS_PREINSTALL: grafana-clickhouse-datasource@4.22.1,trino-datasource@1.4.1
+      CLICKHOUSE_GRAFANA_PASSWORD: ${CLICKHOUSE_GRAFANA_PASSWORD:-}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports:
+      - '127.0.0.1:${GRAFANA_PORT:-3000}:3000'
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./dashboard/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./dashboard/grafana/dashboards:/var/lib/grafana/hospital-dashboards:ro
+    mem_limit: 512m
+    networks:
+      - hospital-lake
+    depends_on:
+      trino:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://localhost:3000/api/health']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
 
   spark-smoke:
     image: apache/spark:3.5.5-python3
@@ -305,6 +334,7 @@ volumes:
   iceberg-catalog:
   spark-ivy:
   stream-state:
+  grafana-data:
 
 networks:
   hospital-lake:

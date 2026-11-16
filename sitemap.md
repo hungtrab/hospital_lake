@@ -143,8 +143,8 @@ ingestion is available via `make batch-bronze-docker`. CSV API clean fixtures an
 
 `dashboard/grafana/build_dashboards.py` generates the three Week 5 JSON files;
 `make dashboard-build` refreshes them. Live panels use the Week 5 ClickHouse
-handoff proposal documented in `dashboard/grafana/README.md`. The Grafana Compose
-service is not on `main` yet.
+handoff proposal documented in `dashboard/grafana/README.md`. `make dashboard-smoke`
+(`scripts/grafana_smoke.py`) checks provisioning and runs the Trino-backed panels.
 
 No manually-clicked dashboards; everything provisioned from these files.
 
