@@ -24,7 +24,7 @@ without deleting the volume. `CREATE ... IF NOT EXISTS` does not repair drift.
 | `realtime_lab_metrics` | `window_start` (key), `abnormal_labs` |
 
 All inputs additionally require `revision` (UInt64). Time columns are Spark
-TimestampType, session UTC; counters and revision are nonnegative integers.
+TimestampType, session UTC (microseconds preserved as DateTime64(6)); counters and revision are nonnegative integers.
 `icu_occupancy` is an occupied patient/bed count, not a percentage. Lab windows
 are **non-overlapping one-minute buckets**, so Grafana's last-15-minute SUM does
 not add overlapping rolling counts. Department snapshots are five-minute
@@ -71,7 +71,8 @@ make test-clickhouse PYTHON=.venv/bin/python
 
 The integration test writes unique lab snapshots, repeats a batch, writes a
 correction, then replays an older revision and verifies one row with the newest
-value through the public view. It cleans only its own fixture timestamp. It
-does not prove Kafka → aggregations → dashboards or real streaming checkpoint
-recovery. Docker is unavailable in the implementation workspace; live validation
+value through the public view. It also restarts a real file-source Structured Streaming query against a
+persistent checkpoint, with explicit replay and a correction, and verifies one
+public row with the corrected value. It cleans only its fixture timestamps.
+It does not prove the Kafka → aggregations → dashboards weekly gate. Docker is unavailable in the implementation workspace; live validation
 is pending. Unit tests prove HTTP retry/failure behavior and Spark serialization.

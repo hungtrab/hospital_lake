@@ -84,7 +84,7 @@ class ClickHouseSparkTests(unittest.TestCase):
         self.assertEqual(send.call_count, 2)
         rows = [json.loads(call.args[1]) for call in send.call_args_list]
         self.assertEqual([row["revision"] for row in rows], [1, 2])
-        self.assertEqual(rows[0]["window_start"], "2026-11-16 12:00:00.000")
+        self.assertEqual(rows[0]["window_start"], "2026-11-16 12:00:00.000000")
 
     def test_conflicting_key_revision_fails_before_writing(self):
         from spark.streaming.clickhouse_sink import write_microbatch
@@ -93,3 +93,17 @@ class ClickHouseSparkTests(unittest.TestCase):
                 write_microbatch(self.frame([(2, 1), (3, 1)]), 0,
                                  table="realtime_lab_metrics", config=ClickHouseConfig(password="secret"))
         send.assert_not_called()
+
+    def test_distinct_microsecond_keys_remain_distinct_on_wire(self):
+        from datetime import datetime, timezone
+        from spark.streaming.clickhouse_sink import write_microbatch
+        frame = self.spark.createDataFrame([
+            (datetime(2026, 11, 16, 12, 0, 0, 1, timezone.utc), 1, 1),
+            (datetime(2026, 11, 16, 12, 0, 0, 2, timezone.utc), 2, 1),
+        ], "window_start timestamp, abnormal_labs long, revision long")
+        with patch("spark.streaming.clickhouse_sink.ClickHouseClient.execute") as send:
+            write_microbatch(frame, 0, table="realtime_lab_metrics",
+                             config=ClickHouseConfig(password="secret"))
+        rows = [json.loads(line) for line in send.call_args.args[1].splitlines()]
+        self.assertEqual({row["window_start"] for row in rows}, {
+            "2026-11-16 12:00:00.000001", "2026-11-16 12:00:00.000002"})

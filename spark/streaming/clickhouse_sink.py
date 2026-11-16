@@ -134,7 +134,7 @@ def write_microbatch(frame, batch_id, *, table, config=None):
     count = 0
     chunk = []
     encoded = frame.select(F.to_json(F.struct(*fields), options={
-        "timestampFormat": "yyyy-MM-dd HH:mm:ss.SSS", "timeZone": "UTC",
+        "timestampFormat": "yyyy-MM-dd HH:mm:ss.SSSSSS", "timeZone": "UTC",
         "ignoreNullFields": "false"}).alias("json"))
     for row in encoded.toLocalIterator():
         chunk.append(json.loads(row.json))
