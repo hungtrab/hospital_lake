@@ -132,7 +132,7 @@ ingestion is available via `make batch-bronze-docker`. CSV API clean fixtures an
 |---|---|---|---|---|
 | `iceberg/` | `create_bronze_tables.sql`, `create_stream_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | TV2 six Bronze definitions; TV4 two stream Bronze/quarantine and four Gold definitions; TV1 Silver patients/encounters/quarantine plus TV2 lab_results/bed_events/medications/vitals | TV2/TV4 | 2–4 |
 | `trino/` | `verify_bronze.sql`, `queries.sql` | Bronze ID checks and 11 historical Silver/Gold queries run by `make query` | TV4 | 1–3 |
-| `clickhouse/` | `schema.sql`, `views.sql` | Realtime serving tables: `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | TV3/TV4 | 5 |
+| `clickhouse/` | `schema.sql`, `views.sql`, `README.md` | Versioned aggregate storage and FINAL serving views matching Grafana; revision/UTC/window handoff contract for TV1/TV2 | TV3/TV4 | 5 |
 
 ### 3.6 `dashboard/grafana/` — Serving · TV4
 
@@ -256,3 +256,11 @@ Kafka local commands: `kafka-up`, `kafka-topics`, `kafka-stop`, `kafka-smoke`,
 `kafka-recovery`. Compose adds optional `kafka`/`kafka-init` and `kafka-data` volume.
 Host port/partition defaults are in `.env.example`; `tests/unit/test_kafka_smoke.py`
 checks probe failure/order behavior, partition input validation and profile isolation.
+
+Week 5 TV3: `spark/streaming/clickhouse_sink.py` accepts absolute aggregate snapshots
+from TV1/TV2 via foreachBatch with immutable per-key revisions and bounded HTTP
+retry/chunks. `infra/docker/clickhouse/init.sh` provisions storage/views and a
+read-only Grafana account. Optional Compose `serving` profile and `clickhouse-data`
+volume use `CLICKHOUSE_ENDPOINT/USER/PASSWORD/PORT` plus the existing Grafana reader
+password. `make clickhouse-up` starts it; `make test-clickhouse` runs the opt-in
+Spark/ClickHouse fixture check. Live serving/aggregate integration is pending.
