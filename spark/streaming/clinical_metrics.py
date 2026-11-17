@@ -143,13 +143,18 @@ def main(argv=None):
     parser.add_argument("--starting-offsets", choices=("earliest", "latest"), default="earliest")
     parser.add_argument("--state-dir", default=os.environ.get("CLINICAL_METRICS_STATE_DIR", "checkpoints/clinical-metrics"))
     parser.add_argument("--watermark", default="10 minutes")
+    parser.add_argument("--shuffle-partitions", type=int,
+                        default=os.environ.get("CLINICAL_SHUFFLE_PARTITIONS", "2"))
     parser.add_argument("--clickhouse", action="store_true", help="Also send department/lab snapshots through TV3's installed sink")
     args = parser.parse_args(argv)
     if not args.state_dir.strip():
         parser.error("--state-dir must be a persistent local/PVC directory")
+    if args.shuffle_partitions < 1:
+        parser.error("--shuffle-partitions must be positive")
     root = Path(args.state_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.getLogger("py4j").setLevel(logging.WARNING)
     with (root / "writer.lock").open("a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -157,7 +162,7 @@ def main(argv=None):
             parser.error("another clinical-metrics writer owns this state directory")
         source = {"bootstrap_servers": args.bootstrap_servers, "topics": args.topics,
                   "starting_offsets": args.starting_offsets, "watermark": args.watermark,
-                  "clickhouse": args.clickhouse}
+                  "clickhouse": args.clickhouse, "shuffle_partitions": args.shuffle_partitions}
         writer = None
         if args.clickhouse:
             try:
@@ -175,7 +180,9 @@ def main(argv=None):
         from spark.common.iceberg import create_spark_session
         from spark.streaming.kafka_reader import kafka_connector_package
         spark = create_spark_session("HospitalClinicalMetrics", SparkConfig.from_env(),
-                                     extra_packages=(kafka_connector_package(pyspark.__version__),))
+                                     extra_packages=(kafka_connector_package(pyspark.__version__),),
+                                     include_iceberg=False)
+        spark.conf.set("spark.sql.shuffle.partitions", args.shuffle_partitions)
         queries = []
         try:
             records = read_kafka_events(spark, bootstrap_servers=args.bootstrap_servers,

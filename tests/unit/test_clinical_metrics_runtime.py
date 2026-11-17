@@ -3,10 +3,15 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from spark.streaming.clinical_metrics import runtime_identity
+from spark.streaming.clinical_metrics import main, runtime_identity
 
 
 class ClinicalRuntimeTests(unittest.TestCase):
+    def test_invalid_partition_count_fails_before_starting_spark(self):
+        with self.assertRaises(SystemExit) as result:
+            main(["--shuffle-partitions", "0"])
+        self.assertEqual(result.exception.code, 2)
+
     def test_identity_reused_and_source_changes_fail(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

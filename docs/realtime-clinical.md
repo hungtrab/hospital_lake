@@ -9,7 +9,8 @@ snapshots with increasing `revision`, plus raw quarantined events with reasons.
 
 Install `requirements-spark.txt` in the host environment (Python 3.10+, Java
 17+). Start Kafka with `make kafka-up`. The host runner uses the shared Spark
-session; export the settings from `.env`, with host-reachable MinIO/catalog URLs
+session with Iceberg disabled for this speed-only job, avoiding unused Lakehouse
+JAR downloads; export the settings from `.env`, with host-reachable MinIO/catalog URLs
 if also using Lakehouse jobs. No table reads/writes are needed by this runner.
 
 ```bash
@@ -33,6 +34,10 @@ transfers need an explicit event-contract extension before counting them.
 `CLINICAL_METRICS_STATE_DIR` (or Make's `CLINICAL_STATE_DIR`) points to a
 persistent **local filesystem/PVC**, owned by one driver. `CLINICAL_ARGS` passes
 CLI overrides, for example `--bootstrap-servers localhost:19092`. It holds:
+
+The local runner defaults to two shuffle partitions; set
+`CLINICAL_SHUFFLE_PARTITIONS` or `--shuffle-partitions` before creating its state.
+That setting is pinned with the checkpoint identity across restarts.
 
 ```text
 identity.json                source/settings and revision epoch
