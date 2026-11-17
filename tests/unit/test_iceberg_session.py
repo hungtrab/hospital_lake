@@ -10,7 +10,7 @@ from spark.common.iceberg import ICEBERG_PACKAGES, create_spark_session
 
 
 class IcebergSessionTests(unittest.TestCase):
-    def build(self, version, supplied_packages="", extra_packages=()):
+    def build(self, version, supplied_packages="", extra_packages=(), include_iceberg=True):
         config = SparkConfig.from_env({"MINIO_ACCESS_KEY": "fixture-access",
                                        "MINIO_SECRET_KEY": "fixture-secret"})
         builder = MagicMock()
@@ -25,7 +25,7 @@ class IcebergSessionTests(unittest.TestCase):
         }
         with patch.dict(sys.modules, modules):
             create_spark_session("existing-smoke-caller", config,
-                                 extra_packages=extra_packages)
+                                 extra_packages=extra_packages, include_iceberg=include_iceberg)
         builder.appName.assert_called_once_with("existing-smoke-caller")
         return {call.args[0]: call.args[1] for call in builder.config.call_args_list}
 
@@ -49,6 +49,15 @@ class IcebergSessionTests(unittest.TestCase):
         supplied = f"{iceberg},{aws}"
         packages = self.build("3.5.5", supplied, (kafka, aws))["spark.jars.packages"]
         self.assertEqual(packages, f"{supplied},{kafka}")
+
+    def test_speed_only_session_omits_unused_lakehouse_connectors(self):
+        kafka = "org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.2"
+        settings = self.build("4.0.2", extra_packages=(kafka,), include_iceberg=False)
+        self.assertEqual(settings["spark.jars.packages"], kafka)
+        self.assertEqual(settings["spark.sql.session.timeZone"], "UTC")
+        self.assertIn("spark.redaction.regex", settings)
+        self.assertNotIn("spark.sql.extensions", settings)
+        self.assertFalse(any(name.startswith("spark.sql.catalog.iceberg") for name in settings))
 
 
 if __name__ == "__main__":

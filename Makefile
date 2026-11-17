@@ -1,14 +1,27 @@
 PYTHON ?= python3
+CLINICAL_STATE_DIR ?= $(if $(strip $(CLINICAL_METRICS_STATE_DIR)),$(CLINICAL_METRICS_STATE_DIR),checkpoints/clinical-metrics)
+CLINICAL_ARGS ?=
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then printf 'docker compose'; else printf 'docker-compose'; fi)
 
 .PHONY: kafka-recovery kafka-up kafka-stop kafka-topics kafka-smoke batch batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold gold-docker stream-bronze stream-bronze-docker stream-bronze-probe produce produce-dry-run query slides slides-explained stream-gate dashboard dashboard-build dashboard-smoke
 .DEFAULT_GOAL := help
+.PHONY: stream-clinical test-clinical-stream test-clinical-kafka
+
+stream-clinical:
+	$(PYTHON) -m spark.streaming.clinical_metrics --state-dir "$(CLINICAL_STATE_DIR)" $(CLINICAL_ARGS)
+
+test-clinical-stream:
+	RUN_CLINICAL_STREAM_TESTS=1 $(PYTHON) -m pytest tests/integration/test_clinical_metrics_stream.py -q
+
+test-clinical-kafka:
+	RUN_CLINICAL_KAFKA_TESTS=1 $(PYTHON) -m pytest tests/integration/test_clinical_metrics_kafka.py -q
 .PHONY: video-setup video-voice video-timeline video-preview video slides-report
 
 VIDEO_PYTHON ?= python3
 VIDEO_CONCURRENCY ?= 2
 
 help:
+	@printf '%s\n' 'make stream-clinical PYTHON=.venv/bin/python  TV2 Kafka -> ICU/department/lab snapshots (persistent CLINICAL_STATE_DIR)' 'make test-clinical-stream  Exercise real local stream/checkpoint recovery' 'make test-clinical-kafka  Exercise live Kafka -> clinical metrics (start Kafka first)'
 	@printf '%s\n' 'make slides-report  Build the minimal English Checkpoint 1 report with default Beamer and pdfLaTeX'
 	@printf '%s\n' 'make video-setup  Install the optional video toolchain' 'make video-voice VIDEO_PYTHON=<speech-environment-python>  Generate Northern narration' 'make video-timeline VIDEO_PYTHON=<speech-environment-python>  Align narration and captions' 'make video-preview  Type-check and render key video frames' 'make video [VIDEO_CONCURRENCY=2]  Render, normalize, verify and package the introduction'
 	@printf '%s\n' 'make slides-explained  Build the Vietnamese beginner Beamer deck; open docs/hospitallake-explained.html for the offline interactive guide'

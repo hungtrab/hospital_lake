@@ -9,7 +9,7 @@ ICEBERG_PACKAGES = (
 )
 
 
-def create_spark_session(app_name, config=None, *, extra_packages=()):
+def create_spark_session(app_name, config=None, *, extra_packages=(), include_iceberg=True):
     import pyspark
     from pyspark import SparkConf
     from pyspark.sql import SparkSession
@@ -34,9 +34,14 @@ def create_spark_session(app_name, config=None, *, extra_packages=()):
         f"{prefix}.s3.secret-access-key": config.minio_secret_key,
         f"{prefix}.client.region": config.minio_region,
     }
+    # Speed-only jobs need Kafka/state connectors, not the Lakehouse runtime.
+    # Keep the common session defaults while omitting unused catalog classes.
+    if not include_iceberg:
+        settings = {key: value for key, value in settings.items()
+                    if key != "spark.sql.extensions" and not key.startswith(prefix)}
     # Preserve packages supplied by the existing Compose spark-submit jobs.
     packages = SparkConf().get("spark.jars.packages", "")
-    if not packages:
+    if not packages and include_iceberg:
         if pyspark.__version__.startswith("4.0."):
             packages = ICEBERG_PACKAGES
         elif pyspark.__version__.startswith("3.5."):
