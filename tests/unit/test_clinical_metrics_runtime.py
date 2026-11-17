@@ -41,3 +41,21 @@ class ClinicalRuntimeTests(unittest.TestCase):
                     target.rmdir()
                     with self.assertRaisesRegex(ValueError, "replay buffer removed"):
                         runtime_identity(root, {})
+
+    def test_compacted_or_newer_logs_still_reject_a_removed_checkpoint(self):
+        for name in ("accepted", "dedup", "quarantine"):
+            for log_name in ("9.compact", "100"):
+                with self.subTest(query=name, log=log_name), tempfile.TemporaryDirectory() as temp:
+                    root = Path(temp)
+                    original = runtime_identity(root, {"topic": "fixture"})
+                    metadata = root / ("buffers" if name in ("accepted", "dedup") else "output") / name / "_spark_metadata"
+                    metadata.mkdir(parents=True)
+                    (metadata / log_name).write_text("v1\nfixture-commit")
+                    self.assertFalse((metadata / "0").exists())
+                    # Normal restart is legal even after original logs disappear.
+                    offsets = root / "checkpoints" / name / "offsets"
+                    offsets.mkdir(parents=True)
+                    self.assertEqual(runtime_identity(root, {"topic": "fixture"}), original)
+                    offsets.rmdir()
+                    with self.assertRaisesRegex(ValueError, "checkpoint removed for " + name):
+                        runtime_identity(root, {"topic": "fixture"})

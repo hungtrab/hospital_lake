@@ -34,7 +34,16 @@ new root and must replay the same complete source before replacing serving data.
         for name in ("accepted", "quarantine", "dedup", "department", "lab", "lab15m", "icu"):
             target = root / ("buffers" if name in ("accepted", "dedup") else "output") / name
             checkpoint = root / "checkpoints" / name / "offsets"
-            published = (target / "_spark_metadata" / "0").exists() if name in ("accepted", "dedup", "quarantine") else target.exists()
+            if name in ("accepted", "dedup", "quarantine"):
+                metadata = target / "_spark_metadata"
+                # FileStreamSinkLog can compact/delete commit 0. Any surviving
+                # numeric or compact commit still belongs to this query lifetime.
+                published = metadata.is_dir() and any(
+                    item.is_file() and (item.name.isdigit()
+                                        or (item.name.endswith(".compact") and item.name[:-8].isdigit()))
+                    for item in metadata.iterdir())
+            else:
+                published = target.exists()
             if published and not checkpoint.exists():
                 raise ValueError("checkpoint removed for " + name + "; do not reset a query inside an existing state directory")
             if name in ("accepted", "dedup") and checkpoint.exists() and not (target / "_spark_metadata").exists():
