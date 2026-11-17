@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import importlib.util
 import json
+from pathlib import Path
+import tempfile
 import unittest
 
 from spark.streaming.realtime_aggregates import (
@@ -96,3 +98,26 @@ class RealtimeAggregateTests(unittest.TestCase):
         self.assertIn("UNSUPPORTED_METRIC_VERSION", rejected["version"])
         self.assertIn("INVALID_RESULT_VALUE", rejected["missing"])
         self.assertIn("INVALID_RESULT_VALUE", rejected["infinite"])
+
+    def test_sink_failure_retries_same_revision_before_publishing_marker(self):
+        from spark.streaming.clinical_metrics import publish_snapshot
+        frame = lab_metrics(self.clean([message("lab", "LAB_RESULT", "01:00", result_value=150,
+                                               reference_low=70, reference_high=100)]))
+        delivered = []
+
+        def transient_failure(snapshot, batch_id, *, table):
+            delivered.append((table, snapshot.first().revision, snapshot.first().abnormal_labs))
+            if len(delivered) == 1:
+                raise RuntimeError("temporary serving failure")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            args = dict(root=root, name="lab", revision_base=100, clickhouse_writer=transient_failure)
+            with self.assertRaisesRegex(RuntimeError, "temporary serving failure"):
+                publish_snapshot(frame, 7, **args)
+            self.assertFalse(list((root / "output" / "lab").glob("batch-*")))
+            publish_snapshot(frame, 7, **args)
+            publish_snapshot(frame, 7, **args)
+            self.assertEqual(delivered, [("realtime_lab_metrics", 107, 1)] * 2)
+            stored = self.spark.read.json(str(next((root / "output" / "lab").glob("batch-*")))).first()
+            self.assertEqual((stored.revision, stored.abnormal_labs), (107, 1))

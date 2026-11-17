@@ -12,9 +12,9 @@ from spark.common.normalization import canonical_department
 def prepare_metric_events(events):
     """Validate metric payloads, preserving Kafka bytes and traceable reasons.
 
-Other supported event types remain valid (and advance the ingestion watermark)
-but do not contribute to these three metrics. Lab flags are recomputed.
-"""
+    Other supported event types remain valid (and advance the ingestion
+    watermark) but do not contribute to these metrics. Lab flags are recomputed.
+    """
     from pyspark.sql import functions as F
 
     required = {"event_id", "event_type", "event_time", "payload", "validation_error", "version"}
