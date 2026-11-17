@@ -158,7 +158,6 @@ def main(argv=None):
         source = {"bootstrap_servers": args.bootstrap_servers, "topics": args.topics,
                   "starting_offsets": args.starting_offsets, "watermark": args.watermark,
                   "clickhouse": args.clickhouse}
-        identity = runtime_identity(root, source)
         writer = None
         if args.clickhouse:
             try:
@@ -166,8 +165,11 @@ def main(argv=None):
             except ImportError:
                 parser.error("TV3 ClickHouse sink is not installed; merge its serving prerequisite before --clickhouse")
             config = ClickHouseConfig.from_env()
+            source["clickhouse_endpoint"] = config.endpoint
+            source["clickhouse_user"] = config.username
             def writer(frame, batch_id, *, table):
                 write_microbatch(frame, batch_id, table=table, config=config)
+        identity = runtime_identity(root, source)
         import pyspark
         from spark.common.config import SparkConfig
         from spark.common.iceberg import create_spark_session
@@ -181,7 +183,21 @@ def main(argv=None):
             queries = start_queries(parse_kafka_events(records), state_dir=root,
                                     revision_base=identity["revision_base"], watermark_delay=args.watermark,
                                     clickhouse_writer=writer)
-            spark.streams.awaitAnyTermination()
+            logged = {}
+            while not spark.streams.awaitAnyTermination(5):
+                for query in queries:
+                    progress = query.lastProgress
+                    if progress and logged.get(str(query.id)) != progress["batchId"]:
+                        operators = progress.get("stateOperators", [])
+                        LOG.info(json.dumps({
+                            "job": "clinical_metrics", "query_id": str(query.id),
+                            "batch_id": progress["batchId"], "events_received": progress["numInputRows"],
+                            "late_events": sum(op.get("numRowsDroppedByWatermark", 0) for op in operators),
+                            "duplicate_events": sum(op.get("customMetrics", {}).get("numDroppedDuplicateRows", 0)
+                                                    for op in operators),
+                            "state_rows": sum(op.get("numRowsTotal", 0) for op in operators),
+                        }, sort_keys=True))
+                        logged[str(query.id)] = progress["batchId"]
         except KeyboardInterrupt:
             LOG.info("job=clinical_metrics stopping=interrupt checkpoints=preserved")
         finally:

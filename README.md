@@ -599,6 +599,12 @@ and run `make test-stream-bronze`; the first run needs Maven access for Iceberg.
 
 ## 5. Team
 
+TV2 Week 5 realtime ICU/department/lab aggregations are available with
+`make stream-clinical PYTHON=.venv/bin/python`. See
+[clinical realtime commands and contracts](docs/realtime-clinical.md) for
+checkpoint/restart behavior, output inspection and the pending TV1/TV3 serving
+handoff. This is not yet the full Week 5 Kafka-to-dashboard integration gate.
+
 Four equal members (TV1–TV4). Work allocation and weekly integration gates are defined in [`works.md`](./works.md).
 
 ### TV2 Week 3: clinical Silver

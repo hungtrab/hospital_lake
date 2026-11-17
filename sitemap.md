@@ -9,6 +9,18 @@
 
 ## 1. Current state
 
+TV2 Week 5 adds `spark/streaming/realtime_aggregates.py` (payload validation,
+five-minute department windows, minute lab buckets plus explicit 15-minute
+windows, latest-event ICU registers) and `spark/streaming/clinical_metrics.py`.
+`make stream-clinical` runs independently checkpointed queries with internal
+Parquet replay buffers and immutable local JSON aggregate snapshots. Optional
+ClickHouse publishing reuses TV3's sink when installed; ICU remains a fragment
+for TV1's hospital-state writer. See `docs/realtime-clinical.md` for semantics,
+commands, source coverage requirements and storage/state limits. Real file-stream
+restart and live Kafka tests are opt-in via `test-clinical-stream` and
+`test-clinical-kafka`; known-value unit tests run in `make test`. This does not
+certify the complete Week 5 serving/dashboard gate.
+
 TV1's Week 1 generator has shared Arrow schemas (`schemas.py`), YAML config,
 Parquet/CSV output, UTC timestamps, stable IDs and raw defects tracked in a manifest.
 `make generate-data` defaults to Parquet; `FORMAT=csv` uses the same engine.
