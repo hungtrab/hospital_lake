@@ -167,5 +167,3 @@ def test_observability_resources_are_namespaced_and_have_services():
                 "PersistentVolumeClaim",
             }:
                 assert document["metadata"].get("namespace") == "hospital-lake"
-
-\n
