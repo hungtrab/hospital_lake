@@ -125,6 +125,7 @@ def test_generated_grafana_configmaps_use_source_dashboards_and_prometheus_datas
     }
     dashboards = configmaps["hospital-grafana-dashboards"]["data"]
     assert set(dashboards) == {path.name for path in (REPO_ROOT / "dashboard/grafana/dashboards").glob("*.json")}
+    assert sum(len(content.encode("utf-8")) for content in dashboards.values()) < 1024 * 1024
     datasource_data = configmaps["hospital-grafana-datasources"]["data"]
     assert "Hospital Trino" in datasource_data["hospital.yaml"]
     assert "http://prometheus:9090" in datasource_data["prometheus.yaml"]
@@ -152,7 +153,6 @@ def test_deploy_validates_credentials_before_applying_resources():
         with pytest.raises(ValueError, match="CLICKHOUSE_GRAFANA_PASSWORD"):
             deploy({})
     run_kubectl.assert_not_called()
-
 
 def test_observability_resources_are_namespaced_and_have_services():
     for path in K8S_DIR.glob("*.yaml"):
