@@ -163,6 +163,16 @@ def test_deploy_validates_credentials_before_applying_resources():
     run_kubectl.assert_not_called()
 
 
+def test_k8s_readme_documents_grafana_admin_password_rotation():
+    readme = " ".join(
+        (K8S_DIR / "README.md").read_text(encoding="utf-8").split()
+    ).lower()
+
+    assert "initial grafana admin password" in readme
+    assert "rotate it in grafana" in readme
+    assert "update the local environment variable" in readme
+
+
 def test_credential_revision_restarts_only_secret_consuming_workloads():
     clickhouse = {
         "kind": "StatefulSet",

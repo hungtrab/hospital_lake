@@ -37,9 +37,17 @@ The ClickHouse password is stored in a Kubernetes Secret and used for the
 port 9363. Grafana receives Trino, ClickHouse and Prometheus datasources plus
 the provisioned HospitalLake dashboards.
 
-When either local credential changes, the deploy command uses the Secret's
-Kubernetes resource version to roll ClickHouse and Grafana so both processes
-reload matching values. The version contains no credential data.
+When the ClickHouse reader password changes, the deploy command uses the
+Secret's Kubernetes resource version to roll ClickHouse and Grafana so both
+processes reload matching values. The version contains no credential data.
+
+`GRAFANA_ADMIN_PASSWORD` sets the initial Grafana admin password only. Grafana
+stores the account in its PVC, so changing the environment variable does not
+reset an existing account. To rotate it in Grafana, sign in with the current
+admin account, change the password in Grafana's account settings, then update
+the local environment variable to the same value and redeploy. The deploy
+command restarts the process but preserves the password stored in Grafana's
+database.
 
 The services use ClusterIP. To open the UIs locally, run these in separate
 terminals:
