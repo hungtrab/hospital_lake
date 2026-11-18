@@ -210,7 +210,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | `stream_gate.py` | Week 4 gate: producer at `GATE_RATE` → Kafka → Compose reader → Bronze; samples lag and requires every produced offset in Bronze exactly once; `make stream-gate`, summary in `results/stream-gate.json` | 4 |
 | `checkpoint_demo.sh` | Checkpoint 1 demo: `make up` → `make batch` → `make query` → `make test` (`STREAM=1` adds Kafka + producer); see `docs/demo-script.md` | 4 |
 | `stream_bronze_probe.py` | TV4: poll Trino for Bronze growth, quarantine and duplicate offsets over five minutes; `make stream-bronze-probe` | 4 |
-| `deploy_observability_k8s.py` | TV4: build Grafana ConfigMaps from source, create runtime Secret via stdin, apply workloads and wait for ready rollouts | 6 |
+| `deploy_observability_k8s.py` | TV4: build Grafana ConfigMaps from source, create runtime Secret via stdin, roll credential consumers on Secret resource-version changes, apply workloads and wait for ready rollouts | 6 |
 | `test_k8s_observability.py` | TV4: verify serving/observability workload probes, service selectors, persistence claims, namespace and ClickHouse scrape target | 6 |
 | `reset.sh` | Dev reset (not a substitute for idempotency) | 1+ |
 | `check_generator.py` | TV1 Week 2: actual six-entity schema/FK/count validation and same-seed scale reruns; `verify-generated`, `validate-generator`; JSON report in ignored `results/` | 2 |

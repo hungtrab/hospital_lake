@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -13,6 +14,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMESPACE = "hospital-lake"
+CREDENTIAL_REVISION_ANNOTATION = "hospital-lake/credentials-resource-version"
 
 
 def _configmap(name: str, files: Mapping[str, Path]) -> dict:
@@ -77,8 +79,50 @@ def _apply_manifest(document: dict) -> None:
     )
 
 
+def stamp_credentials_revision(document: dict, resource_version: str) -> None:
+    name = document.get("metadata", {}).get("name")
+    consumes_credentials = (document.get("kind"), name) in {
+        ("StatefulSet", "clickhouse"),
+        ("Deployment", "grafana"),
+    }
+    if not consumes_credentials:
+        return
+
+    pod_metadata = document["spec"]["template"].setdefault("metadata", {})
+    annotations = pod_metadata.setdefault("annotations", {})
+    annotations[CREDENTIAL_REVISION_ANNOTATION] = resource_version
+
+
+def _apply_resource_file(path: Path, credential_resource_version: str) -> None:
+    for document in yaml.safe_load_all(path.read_text(encoding="utf-8")):
+        if not document:
+            continue
+        stamp_credentials_revision(document, credential_resource_version)
+        _apply_manifest(document)
+
+
 def _run_kubectl(*arguments: str) -> None:
     subprocess.run(["kubectl", *arguments], cwd=ROOT, check=True)
+
+
+def _credential_resource_version() -> str:
+    result = subprocess.run(
+        [
+            "kubectl",
+            "get",
+            "secret",
+            "hospital-serving-credentials",
+            "--namespace",
+            NAMESPACE,
+            "-o",
+            "json",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(result.stdout)["metadata"]["resourceVersion"]
 
 
 def deploy(environment: Mapping[str, str] = os.environ) -> None:
@@ -86,12 +130,14 @@ def deploy(environment: Mapping[str, str] = os.environ) -> None:
     build_credentials_secret(environment)  # Validate before creating any resources.
     _run_kubectl("apply", "-f", "infra/k8s/namespace.yaml")
     _apply_manifest(build_credentials_secret(environment))
+    # A Secret resourceVersion change rolls both consumers without exposing values.
+    credential_version = _credential_resource_version()
     for configmap in build_configmaps():
         _apply_manifest(configmap)
 
     manifest_dir = ROOT / "infra" / "k8s" / "observability"
     for filename in ("clickhouse.yaml", "prometheus.yaml", "grafana.yaml"):
-        _run_kubectl("apply", "-f", str(manifest_dir / filename))
+        _apply_resource_file(manifest_dir / filename, credential_version)
 
     for workload, timeout in (
         ("statefulset/clickhouse", "300s"),

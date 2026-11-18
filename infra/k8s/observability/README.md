@@ -37,6 +37,10 @@ The ClickHouse password is stored in a Kubernetes Secret and used for the
 port 9363. Grafana receives Trino, ClickHouse and Prometheus datasources plus
 the provisioned HospitalLake dashboards.
 
+When either local credential changes, the deploy command uses the Secret's
+Kubernetes resource version to roll ClickHouse and Grafana so both processes
+reload matching values. The version contains no credential data.
+
 The services use ClusterIP. To open the UIs locally, run these in separate
 terminals:
 

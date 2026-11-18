@@ -8,6 +8,7 @@ from scripts.deploy_observability_k8s import (
     build_configmaps,
     build_credentials_secret,
     deploy,
+    stamp_credentials_revision,
 )
 
 
@@ -68,6 +69,7 @@ def test_grafana_mounts_provisioned_dashboards_and_persistent_data():
     assert "/var/lib/grafana/hospital-dashboards" in mounts
     assert any(volume.get("persistentVolumeClaim") for volume in pod["volumes"])
     assert container["readinessProbe"]
+    assert deployment["spec"]["strategy"]["type"] == "Recreate"
     secret_refs = {
         env["valueFrom"]["secretKeyRef"]["key"]
         for env in container["env"]
@@ -93,6 +95,7 @@ def test_prometheus_scrapes_clickhouse_and_persists_tsdb():
     container = pod["containers"][0]
     assert container["readinessProbe"]
     assert any(volume.get("persistentVolumeClaim") for volume in pod["volumes"])
+    assert deployment["spec"]["strategy"]["type"] == "Recreate"
 
 
 def test_grafana_configmaps_are_built_from_repository_provisioning():
@@ -158,6 +161,33 @@ def test_deploy_validates_credentials_before_applying_resources():
         with pytest.raises(ValueError, match="CLICKHOUSE_GRAFANA_PASSWORD"):
             deploy({})
     run_kubectl.assert_not_called()
+
+
+def test_credential_revision_restarts_only_secret_consuming_workloads():
+    clickhouse = {
+        "kind": "StatefulSet",
+        "metadata": {"name": "clickhouse"},
+        "spec": {"template": {"metadata": {"labels": {"app": "clickhouse"}}}},
+    }
+    grafana = {
+        "kind": "Deployment",
+        "metadata": {"name": "grafana"},
+        "spec": {"template": {"metadata": {"labels": {"app": "grafana"}}}},
+    }
+    prometheus = {
+        "kind": "Deployment",
+        "metadata": {"name": "prometheus"},
+        "spec": {"template": {"metadata": {"labels": {"app": "prometheus"}}}},
+    }
+
+    stamp_credentials_revision(clickhouse, "42")
+    stamp_credentials_revision(grafana, "42")
+    stamp_credentials_revision(prometheus, "42")
+
+    annotation = "hospital-lake/credentials-resource-version"
+    assert clickhouse["spec"]["template"]["metadata"]["annotations"][annotation] == "42"
+    assert grafana["spec"]["template"]["metadata"]["annotations"][annotation] == "42"
+    assert "annotations" not in prometheus["spec"]["template"]["metadata"]
 
 def test_observability_resources_are_namespaced_and_have_services():
     for path in K8S_DIR.glob("*.yaml"):
