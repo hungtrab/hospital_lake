@@ -125,6 +125,11 @@ def test_generated_grafana_configmaps_use_source_dashboards_and_prometheus_datas
     }
     dashboards = configmaps["hospital-grafana-dashboards"]["data"]
     assert set(dashboards) == {path.name for path in (REPO_ROOT / "dashboard/grafana/dashboards").glob("*.json")}
+    assert {
+        "hospital-overview.json",
+        "realtime-operations.json",
+        "historical-analytics.json",
+    }.issubset(dashboards)
     assert sum(len(content.encode("utf-8")) for content in dashboards.values()) < 1024 * 1024
     datasource_data = configmaps["hospital-grafana-datasources"]["data"]
     assert "Hospital Trino" in datasource_data["hospital.yaml"]
@@ -163,3 +168,4 @@ def test_observability_resources_are_namespaced_and_have_services():
             }:
                 assert document["metadata"].get("namespace") == "hospital-lake"
 
+\n
