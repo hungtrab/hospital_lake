@@ -5,13 +5,17 @@ import subprocess
 from pathlib import Path
 
 from spark.common.config import SparkConfig
+from spark.common.iceberg import iceberg_packages
 
 
-def command(config, *, submit="spark-submit"):
+def command(config, *, submit="spark-submit", spark_version=None):
     root = Path(__file__).resolve().parents[1]
-    version = os.environ.get("ICEBERG_VERSION", "1.9.2")
-    packages = (f"org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:{version},"
-                f"org.apache.iceberg:iceberg-aws-bundle:{version}")
+    if spark_version is None:
+        spark_version = os.environ.get('SPARK_VERSION')
+    if spark_version is None:
+        import pyspark
+        spark_version = pyspark.__version__
+    packages = iceberg_packages(spark_version, os.environ.get('ICEBERG_VERSION'))
     return [
         submit, "--master", config.master, "--packages", packages,
         "--conf", "spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",

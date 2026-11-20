@@ -37,3 +37,7 @@ docs/video/node_modules/
 docs/video/public/audio/
 docs/video/src/timeline.json
 .video-venv/
+
+# Private live deployment configuration
+homecoming.env
+worker-secrets.json

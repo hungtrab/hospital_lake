@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import re
+import os
 from collections.abc import Sequence
 
 
 SUPPORTED_EVENT_TYPES = (
     "PATIENT_REGISTERED",
+    "CONSULTATION_STARTED",
+    "OUTPATIENT_COMPLETED",
     "ADMISSION",
     "DISCHARGE",
     "TRANSFER",
@@ -53,11 +56,15 @@ def read_kafka_events(
         raise ValueError("bootstrap_servers must be non-empty")
     if starting_offsets not in ("earliest", "latest"):
         raise ValueError("starting_offsets must be earliest or latest")
+    limit = int(os.environ.get("STREAM_MAX_OFFSETS", "20000"))
+    if limit <= 0:
+        raise ValueError("STREAM_MAX_OFFSETS must be positive")
     return (
         spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", bootstrap_servers.strip())
         .option("subscribe", _normalize_topics(topics))
         .option("startingOffsets", starting_offsets)
+        .option("maxOffsetsPerTrigger", limit)
         .load()
     )
 

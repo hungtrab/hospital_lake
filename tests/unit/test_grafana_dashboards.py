@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from dashboard.grafana.build_dashboards import CLICKHOUSE, TRINO, build
+from dashboard.grafana.build_dashboards import CLICKHOUSE, TRINO, PROMETHEUS, build
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -31,8 +31,11 @@ class GrafanaDashboardTests(unittest.TestCase):
             self.assertEqual(actual, expected)
             self.assertTrue(actual["panels"])
             for panel in actual["panels"]:
-                self.assertIn(panel["datasource"], (TRINO, CLICKHOUSE))
+                self.assertIn(panel["datasource"], (TRINO, CLICKHOUSE, PROMETHEUS))
                 query = panel["targets"][0]
+                if panel['datasource'] == PROMETHEUS:
+                    self.assertIn('hospital_', query['expr'])
+                    continue
                 sql = query.get("rawSQL", query.get("rawSql"))
                 self.assertIn("SELECT", sql)
                 self.assertIn("FROM", sql)
@@ -94,6 +97,9 @@ class GrafanaDashboardTests(unittest.TestCase):
     def test_every_query_declares_its_result_format(self):
         for definition in build().values():
             for panel in definition["panels"]:
+                if panel['datasource'] == PROMETHEUS:
+                    self.assertTrue(panel['targets'][0]['range'])
+                    continue
                 expected = 0 if panel["type"] == "timeseries" else 1
                 self.assertEqual(panel["targets"][0]["format"], expected, panel["title"])
 
@@ -110,7 +116,7 @@ class GrafanaDashboardTests(unittest.TestCase):
             (ROOT / "dashboard" / "grafana" / "provisioning" / "datasources" / "hospital.yaml").read_text(encoding="utf-8")
         )["datasources"]
         by_uid = {source["uid"]: source["type"] for source in provisioned}
-        for source in (TRINO, CLICKHOUSE):
+        for source in (TRINO, CLICKHOUSE, PROMETHEUS):
             self.assertEqual(by_uid[source["uid"]], source["type"])
 
     def test_grafana_never_blocks_compose_for_older_env_files(self):

@@ -57,6 +57,9 @@ services:
       CATALOG_WAREHOUSE: ${ICEBERG_WAREHOUSE:-s3://warehouse/}
       # Allow catalog reads alongside batch commits (Iceberg upstream #18044).
       CATALOG_URI: jdbc:sqlite:/var/lib/iceberg/catalog.db?journal_mode=WAL
+      # Serialize JDBC operations for this single-node SQLite catalog. Multiple
+      # pooled connections can retain stale read snapshots after catalog restart.
+      CATALOG_CLIENTS: '1'
       CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
       CATALOG_S3_ENDPOINT: http://minio:9000
       CATALOG_S3_PATH__STYLE__ACCESS: 'true'
@@ -95,7 +98,7 @@ services:
       - ./infra/docker/trino/jvm.config:/etc/trino/jvm.config:ro
     mem_limit: 2g
     healthcheck:
-      test: ["CMD", "trino", "--server", "http://localhost:8080", "--execute", "SELECT 1", "--output-format", "NULL"]
+      test: ["CMD", "/usr/lib/trino/bin/health-check"]
       interval: 15s
       timeout: 10s
       retries: 8
@@ -137,7 +140,7 @@ services:
     mem_limit: 1g
     restart: unless-stopped
     healthcheck:
-      test: ['CMD', '/opt/kafka/bin/kafka-topics.sh', '--bootstrap-server', 'kafka:29092', '--list']
+      test: ['CMD-SHELL', 'KAFKA_HEAP_OPTS="-Xms16m -Xmx64m" /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list']
       interval: 10s
       timeout: 10s
       retries: 12
@@ -162,32 +165,6 @@ services:
     restart: 'no'
     networks:
       - hospital-lake
-
-  clickhouse:
-    image: clickhouse/clickhouse-server:25.8.4.13
-    profiles: ['serving']
-    environment:
-      CLICKHOUSE_DB: hospital
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-hospital_writer}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-hospital_local_writer}
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1'
-      CLICKHOUSE_GRAFANA_PASSWORD: ${CLICKHOUSE_GRAFANA_PASSWORD:-hospital_local_reader}
-    ports:
-      - '127.0.0.1:${CLICKHOUSE_PORT:-8123}:8123'
-    volumes:
-      - clickhouse-data:/var/lib/clickhouse
-      - ./sql/clickhouse:/contracts:ro
-      - ./infra/docker/clickhouse/init.sh:/docker-entrypoint-initdb.d/01-hospital.sh:ro
-    networks:
-      - hospital-lake
-    mem_limit: 1536m
-    restart: unless-stopped
-    healthcheck:
-      test: ['CMD-SHELL', 'clickhouse-client --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --query "SELECT 1"']
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
 
   grafana:
     image: grafana/grafana:12.2.0
@@ -216,6 +193,60 @@ services:
       timeout: 5s
       retries: 12
       start_period: 60s
+
+  prometheus:
+    image: prom/prometheus:v3.13.5
+    profiles: ['monitoring']
+    command: ['--config.file=/etc/prometheus/prometheus.yml', '--storage.tsdb.retention.time=7d']
+    volumes:
+      - ./infra/docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - '127.0.0.1:${PROMETHEUS_PORT:-9090}:9090'
+    networks: [hospital-lake]
+    mem_limit: 512m
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://localhost:9090/-/ready']
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8.18.1
+    profiles: ['realtime']
+    environment:
+      CLICKHOUSE_USER: hospital_admin
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD:-hospital_local_admin}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1'
+    ports:
+      - '127.0.0.1:${CLICKHOUSE_PORT:-8123}:8123'
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    networks: [hospital-lake]
+    mem_limit: 2g
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8123/ping']
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  clickhouse-init:
+    image: clickhouse/clickhouse-server:25.8.18.1
+    profiles: ['realtime']
+    entrypoint: ['/bin/sh', '/bootstrap.sh']
+    environment:
+      CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD:-hospital_local_admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-hospital_local_writer}
+      CLICKHOUSE_GRAFANA_PASSWORD: ${CLICKHOUSE_GRAFANA_PASSWORD:-hospital_local_reader}
+    volumes:
+      - ./infra/docker/clickhouse/bootstrap.sh:/bootstrap.sh:ro
+      - ./sql/clickhouse/live_schema.sql:/schema.sql:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks: [hospital-lake]
 
   spark-smoke:
     image: apache/spark:3.5.5-python3
@@ -315,6 +346,20 @@ services:
       - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.0,org.apache.iceberg:iceberg-aws-bundle:1.9.0
       - spark/batch/silver_to_gold.py
 
+  maintenance:
+    extends:
+      service: spark-smoke
+    mem_limit: 2g
+    entrypoint:
+      - /opt/spark/bin/spark-submit
+      - --driver-memory
+      - 1g
+      - --conf
+      - spark.jars.ivy=/tmp/ivy
+      - --packages
+      - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.0,org.apache.iceberg:iceberg-aws-bundle:1.9.0
+      - spark/batch/compact_tables.py
+
   bronze-smoke:
     extends:
       service: bronze-bootstrap
@@ -337,6 +382,8 @@ services:
       KAFKA_TOPICS: ${KAFKA_TOPICS:-hospital.events}
       KAFKA_STARTING_OFFSETS: ${KAFKA_STARTING_OFFSETS:-latest}
       STREAM_CHECKPOINT_LOCATION: ${STREAM_CHECKPOINT_LOCATION_DOCKER:-/tmp/checkpoints/stream-bronze}
+      STREAM_MAX_OFFSETS: ${STREAM_MAX_OFFSETS:-20000}
+      STREAM_TRIGGER: ${STREAM_TRIGGER:-10 seconds}
     volumes:
       # This replaces spark-ivy:/tmp for this service. The image's /tmp is
       # mode 1777, so its non-root Spark user can write Ivy and checkpoint data.
@@ -354,14 +401,51 @@ services:
       - org.apache.hadoop:hadoop-client-runtime,org.apache.hadoop:hadoop-client-api,org.lz4:lz4-java,org.xerial.snappy:snappy-java,org.slf4j:slf4j-api,commons-logging:commons-logging,com.google.code.findbugs:jsr305
       - spark/streaming/kafka_to_bronze.py
 
+  stream:
+    extends:
+      service: stream-bronze
+    profiles: ['realtime']
+    environment:
+      SPARK_MASTER: ${REALTIME_SPARK_MASTER:-local[2]}
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: hospital_writer
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-hospital_local_writer}
+      REALTIME_CHECKPOINT_LOCATION: /tmp/checkpoints/realtime
+      REALTIME_ICU_BEDS: ${REALTIME_ICU_BEDS:-20}
+      KAFKA_STARTING_OFFSETS: ${KAFKA_STARTING_OFFSETS:-earliest}
+    volumes:
+      - realtime-state:/tmp
+    ports:
+      - '127.0.0.1:${STREAM_METRICS_PORT:-8090}:8090'
+    mem_limit: 3g
+    entrypoint:
+      - /opt/spark/bin/spark-submit
+      - --driver-memory
+      - 1g
+      - --conf
+      - spark.jars.ivy=/tmp/ivy
+      - --packages
+      - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.0,org.apache.iceberg:iceberg-aws-bundle:1.9.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.5
+      - --exclude-packages
+      - org.apache.hadoop:hadoop-client-runtime,org.apache.hadoop:hadoop-client-api,org.lz4:lz4-java,org.xerial.snappy:snappy-java,org.slf4j:slf4j-api,commons-logging:commons-logging,com.google.code.findbugs:jsr305
+      - spark/streaming/realtime_aggregates.py
+    depends_on:
+      clickhouse-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
+  prometheus-data:
+  clickhouse-data:
+  realtime-state:
   kafka-data:
   minio-data:
   iceberg-catalog:
   spark-ivy:
   stream-state:
   grafana-data:
-  clickhouse-data:
 
 networks:
   hospital-lake:

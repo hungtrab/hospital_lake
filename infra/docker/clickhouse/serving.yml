@@ -1,0 +1,31 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.8.4.13
+    profiles: ['serving']
+    environment:
+      CLICKHOUSE_DB: hospital
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-hospital_writer}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-hospital_local_writer}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1'
+      CLICKHOUSE_GRAFANA_PASSWORD: ${CLICKHOUSE_GRAFANA_PASSWORD:-hospital_local_reader}
+    ports:
+      - '127.0.0.1:${CLICKHOUSE_PORT:-8123}:8123'
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./sql/clickhouse:/contracts:ro
+      - ./infra/docker/clickhouse/init.sh:/docker-entrypoint-initdb.d/01-hospital.sh:ro
+    networks:
+      - hospital-lake
+    mem_limit: 1536m
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'clickhouse-client --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --query "SELECT 1"']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  clickhouse-data:
+networks:
+  hospital-lake:

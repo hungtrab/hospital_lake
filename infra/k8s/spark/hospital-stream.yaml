@@ -1,0 +1,60 @@
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: hospital-stream
+  namespace: hospital-lake
+spec:
+  type: Python
+  pythonVersion: '3'
+  mode: cluster
+  image: hospital-lake/spark:completion
+  imagePullPolicy: IfNotPresent
+  mainApplicationFile: local:///opt/hospital-lake/spark/streaming/realtime_aggregates.py
+  sparkVersion: 3.5.5
+  restartPolicy:
+    type: OnFailure
+    onFailureRetries: 3
+    onFailureRetryInterval: 10
+    onSubmissionFailureRetries: 3
+    onSubmissionFailureRetryInterval: 10
+  sparkConf:
+    spark.driver.extraJavaOptions: '-XX:ActiveProcessorCount=2'
+    spark.executor.extraJavaOptions: '-XX:ActiveProcessorCount=2'
+    spark.driver.extraClassPath: '/opt/ivy/jars/*'
+    spark.executor.extraClassPath: '/opt/ivy/jars/*'
+    spark.sql.shuffle.partitions: '4'
+    spark.kubernetes.allocation.batch.size: '2'
+  volumes:
+  - name: spark-state
+    persistentVolumeClaim:
+      claimName: spark-state
+  driver:
+    cores: 1
+    memory: 1g
+    memoryOverhead: 512m
+    serviceAccount: hospital-spark
+    labels: &id001
+      app: hospital-stream
+    envFrom: &id002
+    - configMapRef:
+        name: hospital-config
+    - secretRef:
+        name: hospital-secrets
+    volumeMounts: &id003
+    - name: spark-state
+      mountPath: /state
+    securityContext: &id004
+      runAsUser: 185
+      runAsGroup: 185
+    podSecurityContext: &id005
+      fsGroup: 185
+  executor:
+    cores: 1
+    memory: 1g
+    memoryOverhead: 768m
+    labels: *id001
+    envFrom: *id002
+    volumeMounts: *id003
+    securityContext: *id004
+    podSecurityContext: *id005
+    instances: 2

@@ -18,13 +18,16 @@ class GoldSubmitTests(unittest.TestCase):
             "ICEBERG_CATALOG_URI": "http://127.0.0.1:8181",
             "ICEBERG_WAREHOUSE": "s3://warehouse/",
         })
-        args = command(config)
+        args = command(config, spark_version='4.0.2')
         rendered = " ".join(args)
         self.assertIn("spark.sql.catalog.iceberg.uri=http://127.0.0.1:8181", rendered)
         self.assertIn("spark.sql.catalog.iceberg.s3.endpoint=http://127.0.0.1:9000", rendered)
         self.assertIn("silver_to_gold.py", rendered)
         self.assertNotIn("local-password", rendered)
         self.assertNotIn("local-user", rendered)
+        self.assertIn('iceberg-spark-runtime-4.0_2.13:', rendered)
+        legacy = ' '.join(command(config, spark_version='3.5.5'))
+        self.assertIn('iceberg-spark-runtime-3.5_2.12:', legacy)
 
     def test_submit_env_puts_repo_root_on_pythonpath(self):
         config = SparkConfig.from_env({"MINIO_ACCESS_KEY": "u", "MINIO_SECRET_KEY": "p"})

@@ -6,6 +6,7 @@ validation_error marks a valid envelope. The original Kafka bytes are preserved.
 """
 
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -27,12 +28,20 @@ def table_name(catalog, name):
     return f"{catalog}.bronze.{name}"
 
 
-def merge_sql(catalog, name, view):
+def merge_sql(catalog, name, view, ranges=()):
     """Use Kafka coordinates for retry safety while retaining duplicate event IDs."""
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", view):
         raise ValueError("view must be a simple SQL identifier")
     target = table_name(catalog, name)
-    return (f"MERGE INTO {target} t USING {view} s ON "
+    # Literal ranges let Iceberg prune file statistics before the join. Retain
+    # coordinate equality for retries, including partial two-table commits.
+    predicates = []
+    for topic, partition, low, high in ranges:
+        topic = topic.replace("'", "''")
+        predicates.append(f"(t._kafka_topic = '{topic}' AND t._kafka_partition = {int(partition)} "
+                          f"AND t._kafka_offset BETWEEN {int(low)} AND {int(high)})")
+    pruning = "(" + " OR ".join(predicates) + ") AND " if predicates else ""
+    return (f"MERGE INTO {target} t USING {view} s ON " + pruning +
             "t._kafka_topic = s._kafka_topic AND "
             "t._kafka_partition = s._kafka_partition AND "
             "t._kafka_offset = s._kafka_offset "
@@ -92,22 +101,26 @@ def write_microbatch(frame, batch_id, *, catalog="iceberg"):
         try:
             count = rows.count()
             if count:
+                ranges = rows.groupBy("_kafka_topic", "_kafka_partition").agg(
+                    F.min("_kafka_offset"), F.max("_kafka_offset")).collect()
                 view = f"_hospital_{kind}_batch"
                 rows.createOrReplaceTempView(view)
-                frame.sparkSession.sql(merge_sql(catalog, TABLES[kind], view))
+                frame.sparkSession.sql(merge_sql(catalog, TABLES[kind], view, ranges))
             LOG.info("job=stream_bronze batch_id=%d kind=%s rows=%d", batch_id, kind, count)
         finally:
             rows.unpersist()
 
 
-def start_stream(validated, *, checkpoint_location, catalog="iceberg"):
+def start_stream(validated, *, checkpoint_location, catalog="iceberg", query_name="hospital_bronze"):
     """Attach the Bronze/quarantine sink to TV3's validated Kafka stream."""
     if not checkpoint_location:
         raise ValueError("checkpoint_location must be a persistent path")
     table_name(catalog, TABLES["valid"])
     ensure_tables(validated.sparkSession, catalog)
     return (validated.writeStream
+            .queryName(query_name)
             .foreachBatch(lambda frame, batch_id:
                           write_microbatch(frame, batch_id, catalog=catalog))
             .option("checkpointLocation", checkpoint_location)
+            .trigger(processingTime=os.environ.get("STREAM_TRIGGER", "10 seconds"))
             .start())

@@ -3,34 +3,87 @@ CLINICAL_STATE_DIR ?= $(if $(strip $(CLINICAL_METRICS_STATE_DIR)),$(CLINICAL_MET
 CLINICAL_ARGS ?=
 COMPOSE ?= $(shell if docker compose version >/dev/null 2>&1; then printf 'docker compose'; else printf 'docker-compose'; fi)
 
-.PHONY: kafka-recovery kafka-up kafka-stop kafka-topics kafka-smoke batch batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold gold-docker stream-bronze stream-bronze-docker stream-bronze-probe produce produce-dry-run query slides slides-explained stream-gate dashboard dashboard-build dashboard-smoke k8s-observability-up
+.PHONY: kafka-recovery kafka-up kafka-stop kafka-topics kafka-smoke batch batch-silver batch-silver-docker batch-bronze batch-bronze-docker test-bronze test-stream-bronze help setup up down config minio-up minio-stop bootstrap-bucket bootstrap-bronze bronze-smoke week1-smoke week1-recovery smoke-minio test-minio test trino-config trino-up trino-stop trino-smoke verify-bronze gold gold-docker stream-bronze stream-bronze-docker stream-bronze-probe produce produce-dry-run query slides slides-explained stream-gate dashboard dashboard-build dashboard-smoke
 .DEFAULT_GOAL := help
-.PHONY: stream-clinical test-clinical-stream test-clinical-kafka
-
-stream-clinical:
-	$(PYTHON) -m spark.streaming.clinical_metrics --state-dir "$(CLINICAL_STATE_DIR)" $(CLINICAL_ARGS)
-
-test-clinical-stream:
-	RUN_CLINICAL_STREAM_TESTS=1 $(PYTHON) -m pytest tests/integration/test_clinical_metrics_stream.py -q
-
-test-clinical-kafka:
-	RUN_CLINICAL_KAFKA_TESTS=1 $(PYTHON) -m pytest tests/integration/test_clinical_metrics_kafka.py -q
 .PHONY: video-setup video-voice video-timeline video-preview video slides-report
+.PHONY: quality-demo
+.PHONY: quality-web
+.PHONY: k8s-tools k8s-image k8s-up k8s-down k8s-status k8s-batch k8s-stream k8s-smoke k8s-produce k8s-stop-producer benchmark
+
+K8S_PATIENTS ?= 1000
+K8S_EXECUTORS ?= 2
+K8S_RATE ?= 100
+BENCH_RATE ?= 100
+BENCH_DURATION ?= 1800
+BENCH_RESTART_AT ?= 900
+
+k8s-tools:
+	$(PYTHON) -m scripts.k8s_tools
+
+k8s-image:
+	$(COMPOSE) build minio iceberg-rest
+	docker build -f infra/docker/spark/Dockerfile -t hospital-lake/spark:completion .
+
+k8s-up: k8s-tools k8s-image
+	$(PYTHON) -m scripts.k8s deploy
+
+k8s-down:
+	$(PYTHON) -m scripts.k8s stop
+
+k8s-status:
+	$(PYTHON) -m scripts.k8s status
+
+k8s-batch:
+	$(PYTHON) -m scripts.k8s batch --patients $(K8S_PATIENTS) --executors $(K8S_EXECUTORS)
+
+k8s-stream:
+	$(PYTHON) -m scripts.k8s stream --executors $(K8S_EXECUTORS)
+
+k8s-smoke:
+	$(PYTHON) -m scripts.k8s smoke
+
+k8s-produce:
+	$(PYTHON) -m scripts.k8s produce --rate $(K8S_RATE)
+
+k8s-stop-producer:
+	$(PYTHON) -m scripts.k8s stop-producer
+
+benchmark:
+	COMPOSE="$(COMPOSE)" $(PYTHON) -m scripts.realtime_benchmark --env-file "$(REALTIME_ENV)" --rate $(BENCH_RATE) --duration $(BENCH_DURATION) --restart-at $(BENCH_RESTART_AT)
+
+.PHONY: compact
+COMPACT_TABLE ?= iceberg.bronze.stream_events_raw
+compact:
+	COMPOSE="$(COMPOSE)" $(PYTHON) -m scripts.compact --table "$(COMPACT_TABLE)"
+
+QUALITY_WEB_PORT ?= 8765
+
+quality-web:
+	$(PYTHON) -m dashboard.quality_manager.server --port "$(QUALITY_WEB_PORT)" --results "$(QUALITY_OUTPUT_DIR)"
+
+QUALITY_OUTPUT_DIR ?= results/data-quality
+
+quality-demo:
+	$(PYTHON) -m scripts.data_quality_demo --output-dir "$(QUALITY_OUTPUT_DIR)"
 
 VIDEO_PYTHON ?= python3
+CLINICAL_STATE_DIR ?= $(if $(strip $(CLINICAL_METRICS_STATE_DIR)),$(CLINICAL_METRICS_STATE_DIR),checkpoints/clinical-metrics)
+CLINICAL_ARGS ?=
 VIDEO_CONCURRENCY ?= 2
 
 help:
 	@printf '%s\n' 'make stream-clinical PYTHON=.venv/bin/python  TV2 Kafka -> ICU/department/lab snapshots (persistent CLINICAL_STATE_DIR)' 'make test-clinical-stream  Exercise real local stream/checkpoint recovery' 'make test-clinical-kafka  Exercise live Kafka -> clinical metrics (start Kafka first)'
 	@printf '%s\n' 'make clickhouse-up  Start aggregate serving tables and Grafana reader account' 'make test-clickhouse  Test Spark snapshots against a running disposable ClickHouse'
-	@printf '%s\n' 'make slides-report  Build the minimal English Checkpoint 1 report with default Beamer and pdfLaTeX'
+	@printf '%s\n' 'make realtime-up / realtime-smoke / realtime-recovery  Start and verify the full local realtime path' 'make monitoring  Start Prometheus for the local stream' 'make benchmark PYTHON=.venv/bin/python [BENCH_RATE=100 BENCH_DURATION=1800 BENCH_RESTART_AT=900]  Measure sustained workload and planned restart' 'make compact PYTHON=.venv/bin/python [COMPACT_TABLE=iceberg.bronze.stream_events_raw]  Measure Iceberg compaction; stop table writers first' 'make k8s-up / k8s-status / k8s-batch / k8s-stream / k8s-smoke  Isolated single-node kind profile; full integration validation pending' 'make k8s-down  Stop the kind node and preserve its data'
+	@printf '%s\n' 'make quality-web PYTHON=.venv/bin/python [QUALITY_WEB_PORT=8765]  Open local quality reports, review notes and run the real batch demo from a browser'
+	@printf '%s\n' 'make quality-demo PYTHON=.venv/bin/python  Run synthetic dirty-data cases through real Silver/Gold; write isolated Parquet and before/after reports'
+	@printf '%s\n' 'make slides-report  Build the minimal English Group 22 milestone report with default Beamer and pdfLaTeX'
 	@printf '%s\n' 'make video-setup  Install the optional video toolchain' 'make video-voice VIDEO_PYTHON=<speech-environment-python>  Generate Northern narration' 'make video-timeline VIDEO_PYTHON=<speech-environment-python>  Align narration and captions' 'make video-preview  Type-check and render key video frames' 'make video [VIDEO_CONCURRENCY=2]  Render, normalize, verify and package the introduction'
 	@printf '%s\n' 'make slides-explained  Build the Vietnamese beginner Beamer deck; open docs/hospitallake-explained.html for the offline interactive guide'
 	@printf '%s\n' 'make kafka-topics  Safely create/validate Kafka topics' 'make kafka-recovery PYTHON=.venv/bin/python  Verify data/offset persistence after broker recreation'
 	@printf '%s\n' 'make kafka-up  Start optional local KRaft broker and bootstrap topics' 'make kafka-smoke PYTHON=.venv/bin/python  Verify host/internal keyed produce-consume' 'make kafka-stop  Stop Kafka; preserve its data volume'
 	@printf '%s\n' 'make batch-bronze BATCH_ID=demo-001 [INPUT_DIR=data/generated] [ENTITIES=patients]' 'make test-bronze Run local Spark/Iceberg ingestion checks'
 	@printf '%s\n' 'make dashboard-build  Regenerate provisioned Grafana dashboard JSON' 'make dashboard  Start provisioned Grafana and Trino' 'make dashboard-smoke  Check provisioning and run Trino-backed panels through Grafana'
-	@printf '%s\n' 'make k8s-observability-up  Deploy ClickHouse, Grafana and Prometheus to namespace hospital-lake (requires kubectl and two local env vars)'
 	@printf '%s\n' 'make batch-bronze-docker BATCH_ID=demo-001  Run ingestion with Compose Spark and a read-only INPUT_DIR mount'
 	@printf '%s\n' 'make batch [PATIENTS=1000 SEED=42]  Full batch path: generate -> bootstrap Bronze -> ingest Bronze -> verify -> Silver -> Gold'
 	@printf '%s\n' 'make batch-silver-docker [SILVER_ENTITIES="patients encounters"]  Rebuild Silver + quarantine from Bronze with Compose Spark (default: all entities)' 'make batch-silver PYTHON=.venv/bin/python  Same job with host PySpark (host-reachable endpoints required)'
@@ -108,9 +161,28 @@ dashboard:
 dashboard-smoke:
 	$(PYTHON) scripts/grafana_smoke.py
 
-# Week 6 TV4 serving/observability stack; credentials are sent via stdin to kubectl.
-k8s-observability-up:
-	$(PYTHON) scripts/deploy_observability_k8s.py
+.PHONY: realtime-up stream realtime-stop realtime-smoke realtime-recovery monitoring
+REALTIME_ENV ?= .env
+realtime-smoke:
+	COMPOSE="$(COMPOSE)" $(PYTHON) -m scripts.realtime_smoke --env-file "$(REALTIME_ENV)"
+
+realtime-recovery:
+	COMPOSE="$(COMPOSE)" $(PYTHON) -m scripts.realtime_smoke --env-file "$(REALTIME_ENV)" --restart
+
+monitoring:
+	$(COMPOSE) --profile monitoring up -d --wait prometheus
+	$(COMPOSE) restart grafana
+
+realtime-up:
+	$(COMPOSE) --profile kafka --profile realtime up -d --wait kafka clickhouse
+	$(MAKE) kafka-topics
+	$(COMPOSE) --profile kafka --profile realtime run --rm clickhouse-init
+
+stream:
+	$(COMPOSE) --profile kafka --profile realtime up -d stream
+
+realtime-stop:
+	$(COMPOSE) --profile kafka --profile realtime stop stream
 
 ENTITIES ?= patients encounters lab_results medications vitals bed_events
 INPUT_DIR ?= data/generated
@@ -243,7 +315,7 @@ slides:
 slides-explained:
 	latexmk -xelatex -halt-on-error -interaction=nonstopmode -outdir=results/slides docs/slides/hospitallake-explained.tex
 
-# English checkpoint report: stock Beamer theme/fonts/colors, pdfLaTeX.
+# English milestone report: stock Beamer theme/fonts/colors, pdfLaTeX.
 slides-report:
 	latexmk -pdf -halt-on-error -interaction=nonstopmode -outdir=results/slides docs/slides/checkpoint-1-report-en.tex
 
@@ -266,9 +338,42 @@ video:
 	cd docs/video && VIDEO_CONCURRENCY=$(VIDEO_CONCURRENCY) npm run render
 	$(PYTHON) docs/video/publish.py
 
+# Persistent VPS demo. Credentials are supplied through an untracked env file.
+LIVE_ENV ?= homecoming.env
+LIVE_PROJECT ?= hospital-live
+LIVE_COMPOSE = $(COMPOSE) -p $(LIVE_PROJECT) --env-file $(LIVE_ENV) -f docker-compose.yml -f infra/deploy/compose.live.yml --profile kafka --profile realtime --profile monitoring
+.PHONY: live-up live-stop live-status live-check
+live-up:
+	$(LIVE_COMPOSE) up -d --no-build minio iceberg-rest trino kafka kafka-init clickhouse clickhouse-init stream grafana prometheus hospital-api live-batch tunnel
+live-stop:
+	$(LIVE_COMPOSE) stop
+live-status:
+	$(LIVE_COMPOSE) ps
+live-check:
+	$(PYTHON) -m scripts.live_gate --env-file $(LIVE_ENV) --project $(LIVE_PROJECT) --restart
+
+.PHONY: k8s-recovery
+k8s-recovery:
+	$(PYTHON) -m scripts.k8s_recovery --rate $(K8S_RATE)
+
+.PHONY: stream-clinical test-clinical-stream test-clinical-kafka
+
+stream-clinical:
+	$(PYTHON) -m spark.streaming.clinical_metrics --state-dir "$(CLINICAL_STATE_DIR)" $(CLINICAL_ARGS)
+
+test-clinical-stream:
+	RUN_CLINICAL_STREAM_TESTS=1 $(PYTHON) -m pytest tests/integration/test_clinical_metrics_stream.py -q
+
+test-clinical-kafka:
+	RUN_CLINICAL_KAFKA_TESTS=1 $(PYTHON) -m pytest tests/integration/test_clinical_metrics_kafka.py -q
+
 .PHONY: clickhouse-up test-clickhouse
 clickhouse-up:
-	$(COMPOSE) --profile serving up -d --wait clickhouse
+	$(COMPOSE) -p hospital-revision --project-directory . -f infra/docker/clickhouse/serving.yml --profile serving up -d --wait clickhouse
 
 test-clickhouse:
 	RUN_CLICKHOUSE_TESTS=1 $(PYTHON) -m pytest tests/integration/test_clickhouse_serving.py -q
+
+.PHONY: k8s-observability-up
+k8s-observability-up:
+	$(PYTHON) scripts/deploy_observability_k8s.py

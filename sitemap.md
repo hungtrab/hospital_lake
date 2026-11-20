@@ -9,17 +9,40 @@
 
 ## 1. Current state
 
-TV2 Week 5 adds `spark/streaming/realtime_aggregates.py` (payload validation,
-five-minute department windows, minute lab buckets plus explicit 15-minute
-windows, latest-event ICU registers) and `spark/streaming/clinical_metrics.py`.
-`make stream-clinical` runs independently checkpointed queries with internal
-Parquet replay buffers and immutable local JSON aggregate snapshots. Optional
-ClickHouse publishing reuses TV3's sink when installed; ICU remains a fragment
-for TV1's hospital-state writer. See `docs/realtime-clinical.md` for semantics,
-commands, source coverage requirements and storage/state limits. Real file-stream
-restart and live Kafka tests are opt-in via `test-clinical-stream` and
-`test-clinical-kafka`; known-value unit tests run in `make test`. This does not
-certify the complete Week 5 serving/dashboard gate.
+Independent tools (19/11, implemented locally by TV1; no longer assigned to
+TV2–TV4): `docs/independent-tasks.md` documents contracts and validation.
+`generators/stream_generator/daily_schedule.py` generates daily arrival plans;
+`data/samples/overnight_journey.json` + `scripts/verify_patient_journey.py`
+provide an overnight fixture and observed-result comparator;
+`sql/trino/department_week_comparison.sql` + `scripts/department_week_report.py`
+run a portable weekly comparison against local CSV via SQLite (test only).
+Each has a corresponding `tests/unit/test_*.py`; 19 tests pass locally.
+TV1 retains integration adapters, web/API and VPS/Cloudflare deployment.
+No Kafka/Spark/Trino/cloud acceptance gate is certified by these unit tests.
+
+Realtime integration (16/11, local uncommitted work): `spark/streaming/realtime_aggregates.py`
+validates payloads, deduplicates by event time, maintains Iceberg encounter state
+and publishes aggregate snapshots through `spark/common/clickhouse.py`.
+`sql/iceberg/create_realtime_tables.sql` and `sql/clickhouse/live_schema.sql` define
+its contracts. `infra/docker/clickhouse/bootstrap.sh` provisions serving users.
+`scripts/realtime_smoke.py`, `realtime_benchmark.py`, `realtime_maintenance.py`
+provide known-event recovery, workload measurements and aggregate retention.
+`spark/common/stream_metrics.py` exposes real Spark/Kafka progress to Prometheus;
+Grafana's generated Pipeline Monitoring dashboard consumes those metrics.
+See `docs/realtime.md` for commands and `progress.md` for measured status.
+
+Kubernetes local profile: `infra/k8s/` holds kind, service/PVC, Strimzi and
+SparkApplication manifests; `infra/helm/` pins operator values.
+`infra/docker/spark/Dockerfile` packages the shared batch/stream code.
+`scripts/k8s_tools.py` installs checksum-verified tools in ignored `results/`;
+`scripts/k8s.py` deploys using an isolated kubeconfig. Full Kubernetes integration
+is still unverified; currently only operators, MinIO and Iceberg REST have run.
+`spark/batch/run_pipeline.py` reuses the existing batch stages in one application.
+`spark/batch/compact_tables.py` and `scripts/compact.py` rewrite Iceberg data files
+and compare row count/checksum before and after. `scripts/analyze_benchmark.py`
+validates recorded workload evidence without changing the original summary.
+`spark/common/trino.py` provides lightweight HTTP queries for probes.
+`docs/kubernetes.md` records commands, storage/restart limits and unverified gates.
 
 TV1's Week 1 generator has shared Arrow schemas (`schemas.py`), YAML config,
 Parquet/CSV output, UTC timestamps, stable IDs and raw defects tracked in a manifest.
@@ -36,15 +59,6 @@ TV4 smoke checks remain available.
 TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. The Week 1 SparkSession setup is now shared in `spark/common/iceberg.py` and reused by fixtures/bootstrap; batch ingestion is implemented in `spark/batch/ingest_bronze.py`, with metadata and serial batch-ID retries. Unit contracts, structured failure logging (`tests/unit/test_bronze_logging.py`), session compatibility checks (`tests/unit/test_iceberg_session.py`) and real local Spark/Iceberg integration tests cover preservation, retry and failure behavior.
 TV4's Week 3 `spark/batch/silver_to_gold.py` computes four Gold metrics from Silver; `scripts/run_gold.py` submits it with shared Spark configuration. Exact-value local Spark tests exist; `make query` runs 11 Silver/Gold Trino queries (`scripts/run_queries.py`) and fails on errors or empty results; `scripts/checkpoint_demo.sh` + `docs/demo-script.md` script the Checkpoint 1 demo. All six Silver entities are implemented; `make gold-docker` (Compose service `gold`) rebuilds Gold and is the last step of `make batch`.
 TV4's Week 4 `spark/streaming/bronze_sink.py` writes validated Kafka micro-batches into Iceberg Bronze/quarantine; `scripts/stream_bronze_probe.py` checks progress over five minutes. TV3's reader runs in Compose (`make stream-bronze-docker`, internal listener `kafka:29092`, persistent checkpoint volume) and TV1's producer feeds it; live arrival and restart without lost or duplicate Kafka offsets were verified at 10–20 events/s, and `make stream-gate` (`scripts/stream_gate.py`) passed the Week 4 gate: 1000 events/s for 10 minutes, 600,000 messages in Bronze exactly once (reader ≈950 events/s on `local[1]`, so lag grew to 72k and cleared within ~103 s after the producer stopped; the reader later hit its 1.25 GiB container limit with ~660k Bronze rows most likely because each micro-batch MERGE scans the whole table (not yet profiled) — long-run stability not claimed).
-
-TV4 Week 6 adds Kubernetes manifests for ClickHouse, Grafana and Prometheus
-under `infra/k8s/observability/`. `make k8s-observability-up` builds dashboard
-and datasource ConfigMaps from the existing Grafana source files, creates the
-local-credential Secret from environment variables, then applies the services
-and workloads. ClickHouse/Grafana/Prometheus use PVCs and health probes;
-Prometheus scrapes ClickHouse on port 9363. This does not claim a live cluster
-deployment or the complete Week 6 gate; run `python -m pytest
-tests/unit/test_k8s_observability.py` for manifest contract checks.
 TV2 Week 2 provides six Bronze DDL contracts, daily hidden partitions and an idempotent, drift-checking table bootstrap. `bronze-smoke` validates isolated Parquet fixtures, S3 metadata, Trino compatibility, raw preservation and reruns. Production Bronze ingestion is available through `make batch-bronze`; the live Week 2 integration gate passed on 2026-10-22 (see `next_step.md`).
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
@@ -71,7 +85,7 @@ starts only the Kafka profile. Spark Compose integration remains TV3 T3.2.
 ├── generators/          # synthetic batch data + realtime event producer
 ├── spark/               # Spark batch + Structured Streaming jobs
 ├── sql/                 # Iceberg DDL, Trino queries, ClickHouse schema
-├── dashboard/           # Grafana dashboards + provisioning (as code)
+├── dashboard/           # Grafana dashboards + provisioning; local quality manager
 ├── infra/               # docker-compose assets, K8s manifests, Helm values
 ├── tests/               # unit / integration / e2e
 └── scripts/             # bootstrap, reset, seed, demo, benchmark
@@ -84,6 +98,8 @@ Root command/config files (Milestone 0, `plan.md` §22):
 | `requirements-spark.txt` | Optional pinned PySpark 4.0.2 host runtime plus application dependencies; local Spark/Iceberg tests require Java 17+. `batch-bronze-docker` uses the existing Compose Spark image instead. |
 | `requirements.txt`, `pyproject.toml` | Generator dependencies and pytest discovery for both pytest/unittest suites. |
 | `Makefile` | `batch` runs the batch path end to end (generate → Bronze → verify → Silver → Gold via `gold-docker`); `batch-silver(-docker)` rebuilds Silver. Includes `batch-bronze` and `test-bronze` for ingestion/local integration. Week 2: `bootstrap-bronze`, `bronze-smoke`. Week 1 commands: `minio-up`, `minio-stop`, `bootstrap-bucket`, `test-minio`, `week1-smoke`, `week1-recovery`. `setup` installs dependencies; `generate-data` writes configurable Parquet/CSV; `test` runs both styles with pytest. `verify-generated` checks Parquet source contracts; `validate-generator` repeats 10k/100k generation and records deterministic hashes. Includes `verify-bronze`, `gold` (host Spark) and `gold-docker` (Compose) for TV4 batch validation and Gold, plus local and Trino targets. |
+| `script.md` | English speaking script matched to the nine-slide Group 22 milestone report, including Parquet schema and an actual synthetic record; batch demo scope, with streaming not ready for demonstration. |
+| `script-vi.md` | Vietnamese speaking script matching the same nine-slide Group 22 milestone report and batch-focused demo scope. |
 | `.env.example` | Implemented Trino/MinIO/catalog settings plus `SPARK_MASTER` and `ICEBERG_WAREHOUSE`; synthetic-data local credentials shared by MinIO/Trino; `MINIO_IMAGE`, `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`, `ICEBERG_REST_PORT` configure the local storage service. Endpoints use Compose service names. Makefile supports both Compose CLI forms via `COMPOSE`; Trino clients accept the `COMPOSE` override, which Make propagates. Never commit `.env`. |
 | `docker-compose.yml` | Main provisions MinIO, `minio-init`, Iceberg REST, Trino and optional Spark/Bronze bootstrap/smoke, Silver, Gold, Kafka (`kafka` profile) and manually-run stream reader (`stream` profile) services on `hospital-lake`. `minio-data` persists objects, `iceberg-catalog` persists SQLite metadata, `spark-ivy` caches fixture connectors, and `stream-state` persists the streaming connector cache/checkpoint. `kafka-data` persists the broker log. The stream profile connects to Kafka's internal listener `kafka:29092`. |
 
@@ -99,8 +115,9 @@ Legend — **Layer**: Lambda layer the code belongs to (Batch / Speed / Serving 
 |---|---|---|
 | `architecture.md` | Lambda batch/speed/serving topology, component status, current Bronze/Silver/stream paths, repository map, and planned Kubernetes deployment; distinguishes runnable pieces from pending integration gates | 1–6 |
 | `data-model.md` | Implemented six-entity source contracts, migration, raw defect semantics and local 10k/100k measurements; Bronze and all six Silver contracts; Gold checkpoint integration remains pending | 1–3 |
+| `data-cleaning.md` | Vietnamese dirty-data scenarios, method comparison and primary Spark references, implemented normalization policy, local demo commands and limits | 3, hardening |
 | `slides/checkpoint-1.tex` | Checkpoint 1 Beamer deck (Vietnamese, measured numbers); `make slides` builds `results/slides/checkpoint-1.pdf` with xelatex | 4 |
-| `slides/checkpoint-1-report-en.tex` | Minimal English Checkpoint 1 report using stock Beamer theme/fonts/colors; `make slides-report` builds `results/slides/checkpoint-1-report-en.pdf` with pdfLaTeX/latexmk. Nine main slides and a reference appendix, with dated evidence and current/planned status. | 4 |
+| `slides/checkpoint-1-report-en.tex` | Minimal English Group 22 milestone report using stock Beamer theme/fonts/colors; `make slides-report` builds `results/slides/checkpoint-1-report-en.pdf` with pdfLaTeX/latexmk. Nine slides focus on batch, six Parquet filenames, encounter schema and an actual synthetic record; streaming marked not ready for demo. No location line, stream-results slide, source footnotes, references or demo-command slide; speaking script in root `script.md`. | 4 |
 | `hospitallake-explained.html` | Offline Vietnamese beginner guide: hospital example, six entities, batch/stream, interactive teaching fixtures for medallion layers and queue/quarantine, architecture, measured checkpoint status and glossary. Open directly in a browser; examples are explicitly separate from live pipeline results. | 4 |
 | `slides/hospitallake-explained.tex` | Beginner Beamer companion: 9 main slides + references, plain-language roles and dated evidence, source speaker notes; `make slides-explained` builds `results/slides/hospitallake-explained.pdf` with the existing XeLaTeX/Fira toolchain. | 4 |
 | `video/` | Optional standalone Remotion/GSAP introduction, Vietnamese beginner narration (`content.json`), VieNeu-TTS/Whisper preparation, frame-synchronized visuals and FFmpeg publishing/verification. Fonts/source are versioned; audio, timeline, node_modules and video outputs are generated. See `video/README.md`; pipeline outputs live in ignored `results/video/`. | 4 |
@@ -116,6 +133,9 @@ Docs describe **what exists**, never planned-but-unbuilt features (`AGENTS.md` �
 | `raw/` | Raw input files (e.g. optional MIMIC extracts) | No |
 | `generated/` | Output of `generators/batch_generator` (Parquet) | No |
 | `samples/` | Tiny fixture files for tests/docs (incl. intentional bad/duplicate rows) | Yes |
+
+`samples/dirty_scenarios.json`: 36 deterministic batch quality scenarios with
+raw overrides and separate expected outcomes, covering all six entities.
 
 ### 3.3 `generators/` — Batch + Speed input · TV1 (TV2 for load profiles)
 
@@ -153,21 +173,31 @@ ingestion is available via `make batch-bronze-docker`. CSV API clean fixtures an
 |---|---|---|---|---|
 | `iceberg/` | `create_bronze_tables.sql`, `create_stream_bronze_tables.sql`, `create_silver_tables.sql`, `create_gold_tables.sql` | TV2 six Bronze definitions; TV4 two stream Bronze/quarantine and four Gold definitions; TV1 Silver patients/encounters/quarantine plus TV2 lab_results/bed_events/medications/vitals | TV2/TV4 | 2–4 |
 | `trino/` | `verify_bronze.sql`, `queries.sql` | Bronze ID checks and 11 historical Silver/Gold queries run by `make query` | TV4 | 1–3 |
-| `clickhouse/` | `schema.sql`, `views.sql`, `README.md` | Versioned aggregate storage and FINAL serving views matching Grafana; revision/UTC/window handoff contract for TV1/TV2 | TV3/TV4 | 5 |
+| `clickhouse/` | `schema.sql`, `views.sql` | Realtime serving tables: `realtime_hospital_state`, `realtime_department_metrics`, `realtime_lab_metrics` | TV3/TV4 | 5 |
 
 ### 3.6 `dashboard/grafana/` — Serving · TV4
 
 | Path | Content | Wk |
 |---|---|---|
-| `provisioning/` | Week 5 Trino/ClickHouse datasource YAML and file dashboard provider; Prometheus follows in Week 7 | 5, 7 |
-| `dashboards/` | Generated JSON: Hospital Overview, Realtime Operations, Historical Analytics; Infrastructure follows in Week 7 | 5, 7 |
+| `provisioning/` | Trino/ClickHouse/Prometheus datasource YAML and file dashboard provider | 5, 7 |
+| `dashboards/` | Generated JSON: Hospital Overview, Realtime Operations, Historical Analytics, Pipeline Monitoring | 5, 7 |
 
-`dashboard/grafana/build_dashboards.py` generates the three Week 5 JSON files;
-`make dashboard-build` refreshes them. Live panels use the Week 5 ClickHouse
-handoff proposal documented in `dashboard/grafana/README.md`. `make dashboard-smoke`
+`dashboard/grafana/build_dashboards.py` generates the four JSON files;
+`make dashboard-build` refreshes them. Live panels use the implemented ClickHouse
+serving views documented in `dashboard/grafana/README.md`. `make dashboard-smoke`
 (`scripts/grafana_smoke.py`) checks provisioning and runs the Trino-backed panels.
 
 No manually-clicked dashboards; everything provisioned from these files.
+
+### 3.6a `dashboard/quality_manager/` — Local quality demo tool
+
+`server.py` serves a loopback-only Python standard-library API and the buildless
+Vietnamese UI in `static/index.html`, `static/style.css`, `static/app.js`.
+`make quality-web` reads actual batch demo reports, saves separate review notes,
+and launches `scripts.data_quality_demo` with a fixed command. It does not
+replace Grafana or mutate lakehouse tables. See its `README.md`; runtime state
+is ignored under `results/data-quality/_manager`. Tests:
+`tests/unit/test_quality_manager.py`, `tests/e2e/quality_manager.browser.cjs`.
 
 ### 3.7 `infra/` — Infra
 
@@ -175,6 +205,8 @@ No manually-clicked dashboards; everything provisioned from these files.
 |---|---|---|---|
 | `docker/` | Dockerfiles, service configs mounted by `docker-compose.yml` (Trino catalog, MinIO bootstrap, Kafka topic init, …) | TV2 (TV4 for Trino) | 1, 4 |
 | `docker/kafka/` | `bootstrap-topics.sh`: create/validate hospital.events and hospital.dlq without deleting or repartitioning | TV2 | 4 |
+| `docker/prometheus/` | Prometheus scrape configuration for actual Spark micro-batch progress and Kafka backlog; optional monitoring Compose profile | TV1/TV4 integration | 7 |
+| `docker/spark/` | Spark 3.5.5 application image with pinned Python dependencies and pre-resolved Iceberg/Kafka connectors for Spark Operator jobs | TV3 integration | 6 |
 | `docker/minio/` | Pinned source Dockerfile; `bootstrap.sh` creates the warehouse bucket safely with authenticated S3 | TV2 | 1 |
 | `docker/iceberg-rest/` | REST fixture 1.9.0 image wrapper gives non-root catalog user ownership of persistent `/var/lib/iceberg` | TV2 | 1 |
 | `docker/trino/`, `docker/trino/catalog/` | Implemented single-node Trino config, 1 GiB JVM heap, Iceberg REST/S3 catalog with environment-provided credentials | TV4 | 1 |
@@ -183,7 +215,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | `k8s/minio/`, `k8s/iceberg/`, `k8s/trino/` | Storage + catalog + query engine manifests, PVCs | TV1 | 6 |
 | `k8s/kafka/` | Strimzi `Kafka` + `KafkaTopic` resources, producer Deployment | TV2 | 6 |
 | `k8s/spark/` | Spark Operator + `SparkApplication` (batch & streaming) | TV3 | 6 |
-| `k8s/observability/` | TV4 ClickHouse StatefulSet/PVC/metrics endpoint, Grafana deployment/PVC/provisioned datasources and dashboards, Prometheus scrape config/deployment/PVC; `make k8s-observability-up` | TV4 | 6–7 |
+| `k8s/clickhouse/`, `k8s/grafana/`, `k8s/prometheus/` | Serving + observability manifests (= "observability" in `works.md`) | TV4 | 6–7 |
 | `helm/` | Helm values for operators/charts (Strimzi, Spark Operator, Prometheus, …) | TV2/TV3/TV4 | 6 |
 
 ### 3.8 `tests/` — Shared
@@ -210,13 +242,16 @@ No manually-clicked dashboards; everything provisioned from these files.
 | `stream_gate.py` | Week 4 gate: producer at `GATE_RATE` → Kafka → Compose reader → Bronze; samples lag and requires every produced offset in Bronze exactly once; `make stream-gate`, summary in `results/stream-gate.json` | 4 |
 | `checkpoint_demo.sh` | Checkpoint 1 demo: `make up` → `make batch` → `make query` → `make test` (`STREAM=1` adds Kafka + producer); see `docs/demo-script.md` | 4 |
 | `stream_bronze_probe.py` | TV4: poll Trino for Bronze growth, quarantine and duplicate offsets over five minutes; `make stream-bronze-probe` | 4 |
-| `deploy_observability_k8s.py` | TV4: build Grafana ConfigMaps from source, create runtime Secret via stdin, roll credential consumers on Secret resource-version changes, apply workloads and wait for ready rollouts | 6 |
-| `test_k8s_observability.py` | TV4: verify serving/observability workload probes, service selectors, persistence claims, namespace and ClickHouse scrape target | 6 |
 | `reset.sh` | Dev reset (not a substitute for idempotency) | 1+ |
 | `check_generator.py` | TV1 Week 2: actual six-entity schema/FK/count validation and same-seed scale reruns; `verify-generated`, `validate-generator`; JSON report in ignored `results/` | 2 |
+| `data_quality_demo.py` | `make quality-demo`: isolated local Parquet → real Silver/Gold functions; verify expected corrections/rejections, schemas, row accounting and reruns; output before/after Markdown/JSON and Parquet in `results/data-quality/run-*`. Integration test: `tests/integration/test_data_quality_demo.py`. | 3, hardening |
 | `seed.sh` | Generate + load demo dataset | 2 |
 | `demo.sh` | Scripted final demo | 9 |
-| `benchmark.sh` | Batch + streaming benchmarks → CSV/JSON | 8 |
+| `realtime_smoke.py` | Known-event Kafka → Spark → Iceberg/ClickHouse → Grafana assertions, optional local restart | 5 |
+| `realtime_benchmark.py`, `analyze_benchmark.py` | Workload, bounded restart, coverage/latency/resource evidence and independent evidence validation | 7–8 |
+| `realtime_maintenance.py`, `compact.py` | Published aggregate retention and measured Iceberg compaction | 8 |
+| `k8s_tools.py`, `k8s.py` | Pinned tools, isolated kind deployment, batch/stream/smoke entry points | 6 |
+| `benchmark.sh` | Planned batch + streaming benchmark orchestration | 8 |
 
 Scale/failure-injection scripts (Week 7) also go here.
 
@@ -280,10 +315,22 @@ Kafka local commands: `kafka-up`, `kafka-topics`, `kafka-stop`, `kafka-smoke`,
 Host port/partition defaults are in `.env.example`; `tests/unit/test_kafka_smoke.py`
 checks probe failure/order behavior, partition input validation and profile isolation.
 
-Week 5 TV3: `spark/streaming/clickhouse_sink.py` accepts absolute aggregate snapshots
-from TV1/TV2 via foreachBatch with immutable per-key revisions and bounded HTTP
-retry/chunks. `infra/docker/clickhouse/init.sh` provisions storage/views and a
-read-only Grafana account. Optional Compose `serving` profile and `clickhouse-data`
-volume use `CLICKHOUSE_ENDPOINT/USER/PASSWORD/PORT` plus the existing Grafana reader
-password. `make clickhouse-up` starts it; `make test-clickhouse` runs the opt-in
-Spark/ClickHouse fixture check. Live serving/aggregate integration is pending.
+## Live deployment additions (2026-11-19)
+
+| Path | Purpose / consumer | Milestone |
+|---|---|---|
+| `dashboard/hospital/` | Python read API, Cloudflare Worker, static website and Worker tests; real Trino/ClickHouse consumers | VPS demo |
+| `infra/deploy/` | API image and persistent Compose live overlay, private tunnel | VPS demo |
+| `generators/stream_generator/provincial.py` | Poisson arrivals, clinic queues and ward beds calibrated to Bạch Mai, Hanoi | P1 |
+| `docs/hospital-profile.md` | Hospital statistics and simulation assumptions | VPS demo |
+| `generators/stream_generator/daily_service.py` | Persistent daily synthetic journeys and Kafka outbox | P1 |
+| `spark/batch/live_daily_gold.py` | Hourly historical department totals from the Silver event ledger | P0/P1 |
+| `scripts/live_batch_loop.py`, `scripts/live_gate.py` | Run/retry batch recomputation and execute the live integration gate | VPS demo |
+| `infra/k8s/observability/` | Peer observability manifests, independent of live Compose deployment | P2 |
+| `docs/live-deployment.md` | Operations, credentials, rebuild and validation boundaries | VPS demo |
+
+These tasks are now implemented together at the user's request; no teammate handoff is required.
+
+The live **Bản đồ** tab uses `dashboard/hospital/static/map.html`, `dashboard/hospital/room_map.py` and `sql/trino/live_room_occupancy.sql` for the floor plan and occupied beds.
+
+The standalone TV4 deployment is in `infra/k8s/observability/`. Its entry point is `make k8s-observability-up` and its manifest tests are in `tests/unit/test_k8s_observability.py`. See [standalone deployment](infra/k8s/observability/README.md).

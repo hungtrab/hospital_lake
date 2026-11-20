@@ -2,7 +2,7 @@
 
 This directory implements the table/column proposal in the Grafana handoff.
 It stores absolute aggregate snapshots from TV1/TV2, not raw source events.
-Run `make clickhouse-up` after copying `.env.example` to `.env`. The optional
+Run `make clickhouse-up` after copying `.env.example` to `.env`. The standalone `hospital-revision` Compose project uses a separate volume. Choose a free `CLICKHOUSE_PORT` if the live stack is already running, and point `CLICKHOUSE_ENDPOINT` at that port. The optional
 `serving` profile starts ClickHouse with a persistent volume, creates database
 `hospital`, three version tables, public query views, and `grafana_reader`.
 Existing batch commands do not require starting this profile. Grafana uses the

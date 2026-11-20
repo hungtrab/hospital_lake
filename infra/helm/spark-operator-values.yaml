@@ -1,0 +1,12 @@
+spark:
+  jobNamespaces: [hospital-lake]
+  serviceAccount:
+    name: hospital-spark
+controller:
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 256Mi}
+webhook:
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 256Mi}

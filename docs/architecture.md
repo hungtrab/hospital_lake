@@ -4,7 +4,7 @@ HospitalLake follows a Lambda Architecture: Spark batch jobs build the
 historical Lakehouse, while Kafka and Spark Structured Streaming provide a
 low-latency path. Both paths use MinIO + Iceberg as the durable data layer.
 Trino serves historical SQL; ClickHouse is reserved for realtime dashboard
-queries. Grafana provides the provisioned visualization layer.
+queries. Grafana is the shared visualization layer for the local stack.
 
 ```text
                          HOSPITAL DATA (synthetic)
@@ -17,7 +17,7 @@ queries. Grafana provides the provisioned visualization layer.
                      |                                |
                      v                                v
                   Silver                  Spark Structured Streaming
-                     |                    validate → raw/quarantine sink
+                     |                    raw/quarantine + validated state
                      v                                |
                     Gold                              |
                      |                                |
@@ -30,7 +30,7 @@ queries. Grafana provides the provisioned visualization layer.
                           \                       /
                            +------ Grafana -------+
 
-  Kubernetes manifests exist for TV4 serving/observability; cluster gate not yet verified.
+  Deployment target: Kubernetes + Spark Operator + Strimzi + Prometheus
 ```
 
 The diagram shows the intended product boundary. The table below records the
@@ -50,11 +50,10 @@ integration gate has passed.
 | Event simulator | Speed input | Envelope events keyed by patient ID, with configurable defects | Implemented: `make produce-dry-run`; `make produce KAFKA_BOOTSTRAP_SERVERS=localhost:9092` publishes to the local broker. |
 | Kafka broker/topics | Speed transport | `hospital.events` and `hospital.dlq` | Implemented: single-node KRaft broker (Compose profile `kafka`): `make kafka-up` creates both topics; `make kafka-smoke`, `make kafka-recovery`. |
 | Spark Kafka reader | Speed processing | Decode/validate envelopes, preserve invalid events for quarantine, provide event-time dedup with a 10-minute default watermark | Reader code and local Spark unit tests exist. Host entry point: `make stream-bronze` with Kafka and Iceberg reachable. |
-| Stream Bronze/quarantine sink | Shared storage | Persist original Kafka bytes by topic/partition/offset | Idempotent Iceberg sink and integration tests exist. Compose entry point: `make stream-bronze-docker` (after `make up` and `make kafka-up`). Live runs at 10–20 events/s reached raw Bronze and quarantine; after killing and restarting the reader, Kafka offsets in Bronze were contiguous with no gaps or duplicates. `make stream-gate` (1000 events/s for 10 minutes, 25/10) passed: all 600,000 Kafka messages reached Bronze exactly once, with the single-core reader (`local[1]`) at about 950 events/s. The reader does not keep up with 1000 events/s on one core: lag grew from about 30k to 60–72k messages during the run and cleared within about 103 s after the producer stopped (sampled every ~33 s). Afterwards, with ~660k rows in stream Bronze, the reader's container sat at its 1.25 GiB memory limit and was OOM-killed once about 10 minutes later (the kill was outside the 512 MB Java heap). The most likely cause is the sink: every micro-batch MERGEs against the whole Bronze table, so its cost grows with the table; the ~9,700 small data files are another candidate. This has not been profiled yet. Long-running stability is therefore not claimed; a pruned MERGE or append-plus-dedup sink is the next fix. |
-| ClickHouse + realtime aggregates | Speed / Serving | Low-latency realtime metrics | TV2's ICU, department and lab aggregations run locally via `make stream-clinical`; actual Kafka and checkpoint/restart checks exist. See `docs/realtime-clinical.md`. TV1's combined hospital-state job and TV3's ClickHouse serving prerequisite remain pending; no full realtime serving gate is claimed. |
-| Grafana dashboards | Visualization | Hospital overview, realtime operations, historical analytics | Provisioned from source: `make dashboard-build`, `make dashboard`; `make dashboard-smoke` checks provisioning and Trino panels. Live ClickHouse panels still depend on the serving integration. |
-| TV4 Kubernetes serving/observability | Infrastructure | ClickHouse, Grafana, Prometheus services and persistent volumes | Manifests and `make k8s-observability-up` are implemented; live cluster deployment and the full Kubernetes gate have not been verified. |
-| Remaining Kubernetes platform | Infrastructure | MinIO, Iceberg, Trino, Kafka, Spark Operator and workloads | Other Week 6 assignments; full core flow on Kubernetes is not yet claimed. |
+| Stream Bronze/quarantine sink | Shared storage | Preserve Kafka bytes by topic/partition/offset | MERGE prunes by batch topic/offset ranges and safely retries. Raw preservation and restart tests pass. Historical 25/10 Bronze-only gate: 600,000 messages at a target 1,000/s; this does not certify the expanded realtime stack. Current full-stack long-run validation is tracked in `progress.md`. |
+| ClickHouse + realtime aggregates | Serving | Published aggregate snapshots from Iceberg event/state processing | Local known-event/restart gate passed: `make realtime-up`, `make realtime-smoke`, `make realtime-recovery`; see `docs/realtime.md`. |
+| Grafana dashboards | Visualization | Hospital overview, realtime operations, historical analytics and pipeline monitoring | Provisioned from code; historical and eight realtime panels have queried actual pipeline outputs. |
+| Kubernetes, Spark Operator, Strimzi, Prometheus | Infrastructure | Deployment, persistence, scaling, recovery, observability | Prometheus scrapes the local stream. Isolated kind has operators, MinIO and REST; full core integration and scaling gates are pending. See `progress.md`. |
 
 ## Batch and speed paths
 
@@ -105,6 +104,20 @@ kill/restart check passed locally at 10–20 events/s. `make stream-gate`
 only if every offset produced during the run is in Bronze exactly once after
 the reader catches up; the summary goes to `results/stream-gate.json`.
 
+The realtime application runs a separate valid-only query from the same Kafka
+topic. It deduplicates event IDs within the event-time watermark, maintains an
+Iceberg Silver event ledger and encounter state, and publishes only aggregates
+to ClickHouse. A publication marker hides incomplete snapshots from dashboards.
+Iceberg remains the durable source of truth. This is a single-writer local
+implementation, not a claim of end-to-end exactly-once delivery.
+
+```text
+Kafka → valid envelope/payload + event-time dedup
+      → Iceberg Silver event ledger / encounter state
+      → ClickHouse aggregate snapshot + publication marker
+      → Grafana realtime panels
+```
+
 ## Repository map
 
 | Directory | Responsibility |
@@ -117,11 +130,9 @@ the reader catches up; the summary goes to `results/stream-gate.json`.
 | `sql/iceberg/` | Source-controlled Bronze, Silver, Gold and stream Bronze table definitions. |
 | `sql/trino/` | Historical verification and analytical SQL examples. |
 | `docker-compose.yml`, `infra/docker/` | Local MinIO, Iceberg REST, Trino, Kafka (profile `kafka`) and Spark job configuration. |
-| `infra/k8s/observability/` | TV4 ClickHouse, Grafana and Prometheus manifests; `make k8s-observability-up`. |
-| `infra/k8s/`, `helm/` | Remaining Kubernetes deployment assets are planned or assigned to other teammates. |
+| `infra/k8s/`, `helm/` | Planned later Kubernetes deployment assets. |
 | `tests/unit/`, `tests/integration/`, `tests/e2e/` | Local contracts, service integrations, and eventual end-to-end checks. |
-| `dashboard/grafana/` | Provisioned Grafana dashboards, datasources and smoke checks. |
-| `sql/clickhouse/` | ClickHouse serving schema and views when the serving integration is merged. |
+| `dashboard/grafana/`, `sql/clickhouse/` | Planned serving and visualization assets. |
 
 ## Local Lakehouse infrastructure
 
@@ -173,9 +184,10 @@ Keep the producer active for the five-minute probe window; the probe fails if
 Bronze makes no progress for 60 seconds.
 
 `make test` covers implemented local behavior; it does not run the live Kafka,
-Iceberg or Gold paths. The TV4 Kubernetes unit checks parse the serving
-manifests and verify PVCs, probes, namespace and scrape configuration, but do
-not replace deployment against a live cluster. `make stream-bronze-probe` is the
+Iceberg or Gold paths and says nothing about the ClickHouse, Grafana or
+Kubernetes gates, which are still planned. `make stream-bronze-probe` is the
 five-minute live check of the running stream. For planned work and checkpoint status, see
 [`next_step.md`](../next_step.md), [`works.md`](../works.md), and
 [`plan.md`](../plan.md).
+
+The separate TV2 checkpointed clinical runner is available through `make stream-clinical`. The standalone TV4 manifests have their own deployment and validation procedure. [Clinical metrics](realtime-clinical.md) · [TV4 observability](../infra/k8s/observability/README.md)

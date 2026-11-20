@@ -82,7 +82,7 @@ def check_dashboard(base, auth, uid):
     for panel in panels:
         label = f"{uid} / {panel.get('title', 'untitled')}"
         if (panel.get("datasource") or {}).get("uid") != TRINO_UID:
-            print(f"SKIP {label}: not Trino-backed (ClickHouse needs the Week 5 serving tables)")
+            print(f"SKIP {label}: not Trino-backed; use make realtime-smoke for the serving panels")
             continue
         try:
             rows = panel_rows(base, auth, panel)

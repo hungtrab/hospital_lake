@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stream-generator
+  namespace: hospital-lake
+spec:
+  replicas: 0
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: stream-generator
+  template:
+    metadata:
+      labels:
+        app: stream-generator
+    spec:
+      containers:
+      - name: stream-generator
+        image: hospital-lake/spark:completion
+        imagePullPolicy: IfNotPresent
+        ports: []
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+        envFrom:
+        - configMapRef:
+            name: hospital-config
+        - secretRef:
+            name: hospital-secrets
+        command:
+        - python3
+        - -m
+        - generators.stream_generator.producer
+        args:
+        - --rate
+        - '100'
+        - --duration
+        - '3600'
+      volumes: []
