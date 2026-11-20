@@ -45,8 +45,6 @@ def build_configmaps(root: Path = ROOT) -> list[dict]:
             "hospital-grafana-datasources",
             {
                 "hospital.yaml": grafana / "provisioning/datasources/hospital.yaml",
-                "prometheus.yaml": root
-                / "infra/k8s/observability/grafana-prometheus-datasource.yaml",
             },
         ),
         _configmap("hospital-grafana-dashboards", dashboards),

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bản đồ phòng · HospitalLake</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/map.css"></head>
+<body><header><a class="brand" href="/"><span class="mark">H</span><span>HospitalLake<small>GROUP 22 · BỆNH VIỆN MÔ PHỎNG</small></span></a><nav aria-label="Điều hướng"><a href="/#overview">Tổng quan</a><a href="/dashboard.html">Dashboard</a><a href="/map.html" aria-current="page">Bản đồ</a><a href="/#patients">Người bệnh</a><a href="/manual.html">Nhập tay</a><a href="/#reports">Báo cáo</a></nav></header>
+<main class="map-main"><div class="map-heading"><div><p class="eyebrow">BẠCH MAI · HÀ NỘI</p><h1>Bản đồ phòng</h1><p>Mặt bằng giả lập. Chọn phòng để xem người đang khám hoặc nằm điều trị.</p></div><div class="map-stamp" id="map-stamp" role="status">Đang đọc dữ liệu…</div></div>
+<section class="panel map-search" aria-label="Tra cứu trên bản đồ">
+<form id="map-filters" class="filter-bar"><label class="wide">Tìm trên bản đồ<input id="map-query" type="search" maxlength="120" placeholder="Phòng, khoa, mã bệnh nhân, giường, bác sĩ…" autocomplete="off"></label>
+<label>Khu nhà<select id="filter-wing"><option value="">Tất cả khu</option></select></label>
+<label>Tình trạng phòng<select id="filter-occupancy"><option value="">Tất cả phòng</option><option value="occupied">Có người</option><option value="empty">Phòng trống</option><option value="available">Còn chỗ</option><option value="full">Đã đầy</option></select></label>
+<button type="reset" class="secondary">Xóa bộ lọc</button></form>
+<div id="map-matches" hidden><div class="result-footer"><strong id="map-count" role="status"></strong><div><button class="secondary" id="prev-room" type="button">Trước</button> <button class="secondary" id="next-room" type="button">Sau</button></div></div><div id="room-results"></div></div>
+</section><div class="workspace"><aside class="panel wings"><h2>Khu nhà</h2><div id="wings"></div></aside>
+<section class="panel blueprint"><div class="section-title"><div><h2 id="wing-name">Sơ đồ</h2><small id="wing-summary"></small></div><label>Tầng <select id="floor" aria-label="Chọn tầng"></select></label></div>
+<div id="plan" class="floorplan"></div><div class="legend"><span><i></i> Trống</span><span><i class="busy"></i> Có người</span></div></section>
+<section class="panel details" aria-live="polite"><h2 id="room-title">Chi tiết phòng</h2><p id="room-meta">Chọn một phòng trên sơ đồ.</p><div id="occupants"></div></section></div>
+</main><dialog id="journey"><div class="section-title"><h2>Hành trình lượt khám</h2><button id="close-journey" class="secondary">Đóng</button></div><a id="track-journey" class="locate">Theo dõi trên Dashboard</a><p id="journey-id" class="muted small"></p><ol id="events" class="timeline"></ol></dialog>
+<script defer src="/shared.js"></script><script defer src="/map.js"></script></body></html>

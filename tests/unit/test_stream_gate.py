@@ -4,6 +4,7 @@ import json
 import subprocess
 import tempfile
 import unittest
+from threading import Event
 from pathlib import Path
 from unittest import mock
 
@@ -11,6 +12,38 @@ from scripts import stream_gate
 
 
 class StreamGateTests(unittest.TestCase):
+    def test_python_offset_probe_does_not_join_or_commit_a_consumer_group(self):
+        from kafka import TopicPartition
+        with mock.patch('kafka.KafkaConsumer') as client:
+            consumer=client.return_value
+            consumer.partitions_for_topic.return_value={0,1}
+            consumer.end_offsets.return_value={TopicPartition('hospital.events',0):15,
+                                               TopicPartition('hospital.events',1):27}
+            self.assertEqual(stream_gate.kafka_end_offsets([], 'hospital.events', bootstrap_servers='broker:9092'),
+                             {0:15,1:27})
+            self.assertIsNone(client.call_args.kwargs['group_id'])
+            self.assertFalse(client.call_args.kwargs['enable_auto_commit'])
+            consumer.close.assert_called_once_with(autocommit=False,timeout_ms=1000)
+
+    def test_python_offset_failure_is_visible_and_closes_consumer(self):
+        from kafka.errors import KafkaTimeoutError
+        with mock.patch('kafka.KafkaConsumer') as client:
+            consumer=client.return_value
+            consumer.partitions_for_topic.return_value={0}
+            consumer.end_offsets.side_effect=KafkaTimeoutError('fixture timeout')
+            with self.assertRaisesRegex(ValueError,'Kafka offset query failed'):
+                stream_gate.kafka_end_offsets([], 'hospital.events', bootstrap_servers='broker:9092')
+            consumer.close.assert_called_once()
+
+    def test_http_coverage_preserves_integer_validation(self):
+        with mock.patch.object(stream_gate, 'http_query', return_value=[[0, 3, 3, 10, 12]]):
+            self.assertEqual(stream_gate.read_coverage('http://trino:8080', 'sql', 30),
+                             {0: (3, 3, 10, 12)})
+        for row in ([0, 3, 3, None, 12], [False, 3, 3, 10, 12], [0, 3.5, 3, 10, 12]):
+            with mock.patch.object(stream_gate, 'http_query', return_value=[row]):
+                with self.assertRaises(ValueError):
+                    stream_gate.read_coverage('http://trino:8080', 'sql', 30)
+
     def test_kafka_end_offsets_parses_cli_output(self):
         output = "hospital.events:0:2811\nhospital.events:1:2824\nhospital.events:2:2965\n"
         with mock.patch.object(stream_gate.subprocess, "run",
@@ -64,6 +97,10 @@ class StreamGateTests(unittest.TestCase):
                 self.returncode = producer_rc
                 return producer_rc
 
+            def wait(self, timeout=None):
+                self.returncode = producer_rc
+                return producer_rc
+
             def terminate(self):
                 raise AssertionError("finished producer must not be terminated")
 
@@ -72,10 +109,13 @@ class StreamGateTests(unittest.TestCase):
             with mock.patch.object(stream_gate, "kafka_end_offsets", side_effect=ends), \
                     mock.patch.object(stream_gate, "read_coverage", side_effect=coverages), \
                     mock.patch.object(stream_gate.subprocess, "Popen", FakeProducer), \
-                    mock.patch.object(stream_gate.time, "sleep"), \
+                    mock.patch.object(stream_gate.time, "sleep") as sleep, \
                     mock.patch("builtins.print"):
                 code = stream_gate.main(["--rate", "10", "--duration", "10", "--interval", "1",
                                          "--server", "http://t:8080", "--report", str(report)])
+                # A completed producer wakes the sampler immediately; sleeping
+                # first would discover completion late and understate catch-up.
+                sleep.assert_not_called()
             return code, json.loads(report.read_text())
 
     def test_main_passes_when_all_offsets_arrive(self):
@@ -89,6 +129,39 @@ class StreamGateTests(unittest.TestCase):
         full = {0: (100, 100, 0, 99)}
         code, report = self.run_main([{0: 0}, {0: 100}, {0: 100}], [full, full], producer_rc=2)
         self.assertEqual((code, report["status"]), (1, "FAIL"))
+
+    def test_producer_exit_during_slow_probe_does_not_understate_catchup(self):
+        clock=[0.0]
+        exit_requested,finished=Event(),Event()
+        class Producer:
+            returncode=None
+            def __init__(self,*args,**kwargs):
+                kwargs['stderr'].write('{"events_sent":100}\n')
+            def wait(self,timeout=None):
+                if not exit_requested.wait(timeout):
+                    raise subprocess.TimeoutExpired('producer',timeout)
+                self.returncode=0
+                return 0
+            def poll(self):return self.returncode
+            def terminate(self):exit_requested.set()
+        def slow_coverage(*args):
+            clock[0]=10
+            exit_requested.set()
+            assert finished.wait(1), 'exit observer did not run during probe'
+            clock[0]=21
+            return {0:(100,100,0,99)}
+        with tempfile.TemporaryDirectory() as tmp:
+            report=Path(tmp)/'gate.json'
+            with mock.patch.object(stream_gate,'Event',return_value=finished), \
+                    mock.patch.object(stream_gate.time,'monotonic',side_effect=lambda:clock[0]), \
+                    mock.patch.object(stream_gate,'kafka_end_offsets',side_effect=[{0:0},{0:100},{0:100}]), \
+                    mock.patch.object(stream_gate,'read_coverage',side_effect=slow_coverage), \
+                    mock.patch.object(stream_gate.subprocess,'Popen',Producer),mock.patch('builtins.print'):
+                code=stream_gate.main(['--rate','10','--duration','10','--interval','0.01',
+                                      '--catch-up','5','--report',str(report)])
+            result=json.loads(report.read_text())
+        self.assertEqual(result['catch_up_seconds'],11)
+        self.assertEqual((code,result['status']),(1,'FAIL'))
 
 
 if __name__ == "__main__":

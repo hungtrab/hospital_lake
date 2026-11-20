@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+.venv
+.video-venv
+results
+data
+docs
+tests
+**/__pycache__
+**/node_modules
+checkpoints
+spark-warehouse
+metastore_db
+
+homecoming.env
+worker-secrets.json

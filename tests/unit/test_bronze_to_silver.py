@@ -25,6 +25,11 @@ def meta(batch="b1"):
 
 
 class NormalizationTests(unittest.TestCase):
+    def test_malformed_department_does_not_become_known_by_erasing_characters(self):
+        for value in ("ER123", "E/R", "ICU!", "SURG?", "ER💊", "E R"):
+            self.assertNotIn(department_key(value), DEPARTMENT_ALIASES, value)
+        self.assertEqual(DEPARTMENT_ALIASES[department_key("\tinternal--medicine\n")], "INTERNAL_MEDICINE")
+
     def test_generator_aliases_map_to_their_canonical_department(self):
         from generators.batch_generator.schemas import DEPARTMENT_ALIASES as GENERATED
 
@@ -57,6 +62,17 @@ class BronzeToSilverTests(unittest.TestCase):
         from spark.batch.bronze_to_silver import ENTITIES
 
         return next(entity for entity in ENTITIES if entity.name == name)
+
+    def test_spark_department_normalization_matches_python_and_preserves_unknowns(self):
+        from pyspark.sql import functions as F
+        from spark.common.normalization import canonical_department
+
+        values = ["ER123", "E/R", "ICU!", "SURG?", "ER💊", "E R", "\tinternal--medicine\n", " ER ", None]
+        frame = self.spark.createDataFrame([(value,) for value in values], "raw STRING")
+        rows = frame.select("raw", canonical_department(F.col("raw")).alias("canonical")).collect()
+        for row in rows:
+            expected = DEPARTMENT_ALIASES.get(department_key(row.raw)) if row.raw is not None else None
+            self.assertEqual(row.canonical, expected, row.raw)
 
     def patients_bronze(self):
         rows = [

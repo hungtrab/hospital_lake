@@ -22,14 +22,36 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from threading import Event, Thread
 
 from .trino_smoke import cli_command, query
+from spark.common.trino import query as http_query
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def kafka_end_offsets(compose, topic, timeout=60):
-    """Return {partition: end offset} from the Compose broker."""
+def kafka_end_offsets(compose, topic, timeout=60, *, bootstrap_servers=None):
+    """Read offsets without a group/commit; retain CLI fallback for older callers."""
+    if bootstrap_servers:
+        from kafka import KafkaConsumer, TopicPartition
+        from kafka.errors import KafkaError
+        consumer=None
+        try:
+            consumer=KafkaConsumer(bootstrap_servers=bootstrap_servers,group_id=None,
+                enable_auto_commit=False,allow_auto_create_topics=False,
+                request_timeout_ms=int(timeout*1000))
+            partitions=consumer.partitions_for_topic(topic)
+            if not partitions:
+                raise ValueError(f'no partitions reported for {topic}')
+            # 2.2 uses request_timeout_ms; newer clients also expose a per-call
+            # timeout. Use the shared constructor setting for both versions.
+            ends=consumer.end_offsets([TopicPartition(topic,p) for p in sorted(partitions)])
+            return {key.partition:value for key,value in ends.items()}
+        except KafkaError as error:
+            raise ValueError(f'Kafka offset query failed: {error}') from error
+        finally:
+            if consumer is not None:
+                consumer.close(autocommit=False,timeout_ms=1000)
     command = [*compose, "exec", "-T", "kafka", "/opt/kafka/bin/kafka-get-offsets.sh",
                "--bootstrap-server", "kafka:29092", "--topic", topic]
     result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
@@ -63,10 +85,11 @@ def coverage_sql(catalog, topic, start):
 
 
 def read_coverage(command, sql, timeout):
-    rows = query(command, sql, timeout)
+    rows = (http_query(command, sql, timeout) if isinstance(command, str)
+            else query(command, sql, timeout))
     coverage = {}
     for row in rows:
-        if len(row) != 5 or any(not re.fullmatch(r"[0-9]+", value) for value in row):
+        if len(row) != 5 or any(not re.fullmatch(r"[0-9]+", str(value)) for value in row):
             raise ValueError(f"Trino returned malformed coverage row: {row}")
         partition, count, distinct, low, high = (int(value) for value in row)
         coverage[partition] = (count, distinct, low, high)
@@ -123,6 +146,8 @@ def main(argv=None):
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--compose", action="store_true", help="query Trino through the Compose service")
     parser.add_argument("--server")
+    parser.add_argument("--trino-url", default=os.environ.get("TRINO_URL"),
+                        help="use lightweight HTTP queries instead of launching a Trino CLI JVM")
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--report", type=Path, default=ROOT / "results" / "stream-gate.json")
     args = parser.parse_args(argv)
@@ -131,14 +156,16 @@ def main(argv=None):
 
     compose = [*shlex.split(os.environ.get("COMPOSE", "docker compose")), "--project-directory", str(ROOT),
                "-f", str(ROOT / "docker-compose.yml")]
-    command = cli_command("trino", args.compose, args.server)
+    command = args.trino_url or cli_command("trino", args.compose, args.server)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     producer_log_path = args.report.with_suffix(".producer.log")
     samples = []
     producer = None
     producer_done_at = catch_up_seconds = None
+    producer_finished = Event()
+    producer_exit_time = []
     try:
-        start = kafka_end_offsets(compose, args.topic)
+        start = kafka_end_offsets(compose, args.topic, bootstrap_servers=args.bootstrap_servers)
         sql = coverage_sql(args.catalog, args.topic, start)
         print(f"start offsets {start}; producing {args.rate:g} events/s for {args.duration:g}s", flush=True)
         with producer_log_path.open("w") as producer_log:  # a file never blocks the producer
@@ -147,15 +174,24 @@ def main(argv=None):
                  args.bootstrap_servers, "--topic", args.topic, "--rate", str(args.rate),
                  "--duration", str(args.duration)], cwd=ROOT, stderr=producer_log)
         started = time.monotonic()
+        def observe_producer_exit():
+            producer.wait()
+            producer_exit_time.append(time.monotonic() - started)
+            producer_finished.set()
+        Thread(target=observe_producer_exit, daemon=True).start()
         deadline = args.duration + args.catch_up + 3 * args.interval + 120
         while time.monotonic() - started < deadline:
-            time.sleep(args.interval)
-            # Detect the producer's exit before the slow queries so catch-up is not overstated.
-            if producer_done_at is None and producer.poll() is not None:
-                producer_done_at = time.monotonic() - started
-            end = kafka_end_offsets(compose, args.topic)
+            if producer_done_at is None:
+                producer_finished.wait(args.interval)
+            else:
+                time.sleep(args.interval)
+            end = kafka_end_offsets(compose, args.topic, bootstrap_servers=args.bootstrap_servers)
             ingested = sum(c[1] for c in read_coverage(command, sql, args.timeout).values())
             now = time.monotonic() - started
+            # The waiter records completion even while a Kafka/Trino probe is
+            # blocked. Timestamping only here would understate catch-up time.
+            if producer_finished.is_set():
+                producer_done_at = producer_exit_time[0]
             produced = total(end) - total(start)
             sample = {"t": round(now, 1), "kafka": produced, "bronze": ingested, "lag": produced - ingested}
             samples.append(sample)
@@ -166,9 +202,13 @@ def main(argv=None):
                     break
                 if now - producer_done_at > args.catch_up:
                     break
-        end = kafka_end_offsets(compose, args.topic)
+        end = kafka_end_offsets(compose, args.topic, bootstrap_servers=args.bootstrap_servers)
         coverage = read_coverage(command, sql, args.timeout)
-    except (OSError, subprocess.TimeoutExpired, ValueError, csv.Error) as error:
+    except (OSError, subprocess.TimeoutExpired, ValueError, csv.Error, RuntimeError) as error:
+        args.report.write_text(json.dumps({
+            "status": "FAIL", "rate_target": args.rate, "duration_seconds": args.duration,
+            "samples": samples, "problems": [str(error)],
+        }, indent=2) + "\n")
         print(f"FAIL stream gate: {error}", file=sys.stderr)
         return 1
     finally:
@@ -183,6 +223,7 @@ def main(argv=None):
                         producer_returncode=producer.returncode, catch_up_seconds=catch_up_seconds,
                         catch_up_limit=args.catch_up)
     report = {
+        "topic": args.topic,
         "rate_target": args.rate, "duration_seconds": args.duration,
         "interval_seconds": args.interval, "catch_up_limit_seconds": args.catch_up,
         "kafka_messages": total(end) - total(start),
@@ -190,7 +231,7 @@ def main(argv=None):
         "producer": last_stats,
         "producer_events_per_second": last_stats.get("events_per_second"),
         "max_lag_messages": max((s["lag"] for s in samples), default=None),
-        # Measured at sampling granularity: an upper bound within one --interval.
+        # Upper bound at probe completion; includes sampling and query time.
         "catch_up_seconds": catch_up_seconds,
         "start_offsets": start, "end_offsets": end, "samples": samples,
         "problems": problems, "status": "FAIL" if problems else "PASS",

@@ -4,6 +4,24 @@
 
 Course project — *Big Data Storage and Processing*, Hanoi University of Science and Technology (HUST).
 
+Dirty-data demo: `make quality-demo PYTHON=.venv/bin/python` runs 36 synthetic
+scenarios through the actual batch Silver/Gold code and writes before/after
+reports in `results/data-quality/`. See [data cleaning](docs/data-cleaning.md)
+for the Vietnamese explanation, Java setup, correction policies and examples.
+
+Local management web: `make quality-web PYTHON=.venv/bin/python` opens the report
+viewer, before/after comparison, persistent review notes and demo runner at
+`http://127.0.0.1:8765`. See [setup and scope](dashboard/quality_manager/README.md).
+
+Realtime: `make realtime-up && make stream` connects Kafka, Spark, Iceberg,
+ClickHouse and the provisioned Grafana panels after `make up`.
+See [commands, contracts, recovery and monitoring](docs/realtime.md) and the
+latest measured status in [progress.md](progress.md).
+The [Kubernetes profile](docs/kubernetes.md) includes deployment and recovery commands.
+The November 19 run verified a fresh single-node installation, a batch and live
+query, scaling from two to four executors, and recovery while Kafka was receiving data.
+The hosted dashboard and account setup are described in [live deployment](docs/live-deployment.md).
+
 > ⚠️ Academic project. All data is **synthetic / de-identified**. This system makes no clinical claims and is not intended for real hospital use.
 
 ---
@@ -132,7 +150,8 @@ discharge; outpatient encounters have no bed journey. A transfer names the new
 bed and closes the previous assignment within the same department. Bed IDs are
 synthetic and scoped to the encounter, preventing double booking; they do not
 represent a finite hospital inventory. `bed_transfer_rate` controls transfers.
-Live batch integration remains pending.
+The live six-entity batch path has been verified; measured results and current
+integration gates are recorded in `progress.md`.
 
 ### TV1 Week 2: validate the complete generated dataset
 
@@ -590,20 +609,14 @@ The probe checks that Bronze grows for five minutes, that Kafka coordinates do
 not repeat across raw/quarantine, and (optionally) that malformed events reach
 quarantine. It fails on query errors or 60 seconds without a new row; adjust
 that limit with `--max-idle`. Contract tests run
-with `make test`; a live five-minute result remains pending until Kafka, REST,
-and MinIO are available.
+with `make test`; the live probe requires Kafka, REST and MinIO. Current measured
+streaming gates are recorded in `progress.md`.
 
 An isolated Spark/Iceberg integration test exercises raw bytes, malformed-event
 quarantine, and retries without Kafka or Docker. Install `requirements-spark.txt`
 and run `make test-stream-bronze`; the first run needs Maven access for Iceberg.
 
 ## 5. Team
-
-TV2 Week 5 realtime ICU/department/lab aggregations are available with
-`make stream-clinical PYTHON=.venv/bin/python`. See
-[clinical realtime commands and contracts](docs/realtime-clinical.md) for
-checkpoint/restart behavior, output inspection and the pending TV1/TV3 serving
-handoff. This is not yet the full Week 5 Kafka-to-dashboard integration gate.
 
 Four equal members (TV1–TV4). Work allocation and weekly integration gates are defined in [`works.md`](./works.md).
 

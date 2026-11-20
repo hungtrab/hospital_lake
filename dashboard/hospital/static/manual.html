@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nhập tay · HospitalLake</title><link rel="stylesheet" href="/style.css"></head>
+<body><header><a class="brand" href="/"><span class="mark">H</span><span>HospitalLake<small>GROUP 22 · BỆNH VIỆN MÔ PHỎNG</small></span></a>
+<nav aria-label="Điều hướng"><a href="/#overview">Tổng quan</a><a href="/dashboard.html">Dashboard</a><a href="/map.html">Bản đồ</a><a href="/#patients">Người bệnh</a><a href="/manual.html" aria-current="page">Nhập tay</a><a href="/#reports">Báo cáo</a></nav></header>
+<main><h1>Nhập tay</h1><p class="muted">Dùng mã bệnh nhân giả lập. Mỗi thao tác được lưu ngay. Bản đồ và hành trình cập nhật sau khi hệ thống xử lý sự kiện.</p>
+<div class="two-column">
+<section class="panel"><h2>Tiếp nhận nội trú</h2><form id="intake" class="filter-bar">
+<label class="wide">Mã bệnh nhân demo<input id="code" required maxlength="24" pattern="[A-Z0-9][A-Z0-9\-]{0,23}" placeholder="VD: DEMO-22" autocomplete="off" title="Dùng chữ in hoa, số hoặc dấu gạch ngang"></label>
+<label>Tuổi (tùy chọn)<input id="age" type="number" min="0" max="110" step="1" inputmode="numeric"></label>
+<label>Nhóm bệnh (tùy chọn)<select id="condition"><option value="">Chưa ghi nhận</option></select></label>
+<label>Khoa nhập viện<select id="ward" required></select></label><button disabled>Nhập viện</button></form></section>
+<section class="panel"><h2>Lượt điều trị đang chọn</h2><p id="selected">Chọn một lượt bên dưới hoặc nhập viện để bắt đầu.</p>
+<form id="change" class="filter-bar" hidden><label>Khoa tiếp nhận<select id="destination" required></select></label><button type="submit">Chuyển khoa</button><button type="button" class="secondary" id="discharge">Xuất viện</button></form>
+<div id="links" hidden><button type="button" id="show-events" class="secondary">Xem hành trình</button> <a id="locate" class="locate">Xem trên bản đồ</a></div></section></div>
+<p id="message" class="notice" role="status">Đang tải danh sách…</p>
+<section class="panel"><div class="section-title"><h2>Các lượt nhập tay</h2><button type="button" id="reload" class="secondary">Làm mới</button></div>
+<div class="table-wrap"><table><thead><tr><th>Bệnh nhân</th><th>Khoa</th><th>Giường</th><th>Trạng thái</th><th>Cập nhật</th><th>Thao tác</th></tr></thead><tbody id="cases"></tbody></table></div><p class="muted small">Hiển thị các lượt đang điều trị và 20 lượt xuất viện gần nhất.</p></section>
+</main><dialog id="journey"><div class="section-title"><h2>Hành trình lượt khám</h2><button id="close-journey" class="secondary">Đóng</button></div><a id="track-journey" class="locate">Theo dõi trên Dashboard</a><p id="journey-id" class="muted small"></p><ol id="events" class="timeline"></ol></dialog>
+<script defer src="/shared.js"></script><script defer src="/manual.js"></script></body></html>

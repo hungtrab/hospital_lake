@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: spark-state
+  namespace: hospital-lake
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stream
+  namespace: hospital-lake
+spec:
+  selector:
+    app: hospital-stream
+    spark-role: driver
+  ports:
+  - name: p8090
+    port: 8090
+    targetPort: 8090

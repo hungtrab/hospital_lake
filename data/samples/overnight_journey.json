@@ -1,0 +1,146 @@
+{
+  "scenario_id": "overnight-v1",
+  "steps": [
+    {
+      "step_id": "admission",
+      "as_of": "2026-11-23T16:55:00Z",
+      "events": [
+        {
+          "event_id": "overnight-a1",
+          "event_type": "ADMISSION",
+          "event_time": "2026-11-23T16:55:00Z",
+          "source": "hospital-simulator",
+          "version": 1,
+          "payload": {
+            "patient_id": "P-DEMO-001",
+            "encounter_id": "E-DEMO-001",
+            "department": "ICU",
+            "encounter_type": "icu"
+          }
+        }
+      ],
+      "expected": {
+        "current_patients": 1,
+        "by_department": {
+          "ICU": 1,
+          "CARDIOLOGY": 0
+        }
+      }
+    },
+    {
+      "step_id": "midnight",
+      "as_of": "2026-11-23T17:05:00Z",
+      "events": [],
+      "expected": {
+        "current_patients": 1,
+        "by_department": {
+          "ICU": 1,
+          "CARDIOLOGY": 0
+        }
+      }
+    },
+    {
+      "step_id": "transfer",
+      "as_of": "2026-11-23T17:10:00Z",
+      "events": [
+        {
+          "event_id": "overnight-t1",
+          "event_type": "TRANSFER",
+          "event_time": "2026-11-23T17:10:00Z",
+          "source": "hospital-simulator",
+          "version": 1,
+          "payload": {
+            "patient_id": "P-DEMO-001",
+            "encounter_id": "E-DEMO-001",
+            "department": "CARDIOLOGY",
+            "from_bed_id": "ICU-DEMO-1",
+            "to_bed_id": "CARDIOLOGY-DEMO-1"
+          }
+        }
+      ],
+      "expected": {
+        "current_patients": 1,
+        "by_department": {
+          "ICU": 0,
+          "CARDIOLOGY": 1
+        }
+      }
+    },
+    {
+      "step_id": "late_replay",
+      "as_of": "2026-11-23T17:15:00Z",
+      "events": [
+        {
+          "event_id": "overnight-a1",
+          "event_type": "ADMISSION",
+          "event_time": "2026-11-23T16:55:00Z",
+          "source": "hospital-simulator",
+          "version": 1,
+          "payload": {
+            "patient_id": "P-DEMO-001",
+            "encounter_id": "E-DEMO-001",
+            "department": "ICU",
+            "encounter_type": "icu"
+          }
+        }
+      ],
+      "expected": {
+        "current_patients": 1,
+        "by_department": {
+          "ICU": 0,
+          "CARDIOLOGY": 1
+        }
+      }
+    },
+    {
+      "step_id": "discharge",
+      "as_of": "2026-11-24T02:00:00Z",
+      "events": [
+        {
+          "event_id": "overnight-d1",
+          "event_type": "DISCHARGE",
+          "event_time": "2026-11-24T02:00:00Z",
+          "source": "hospital-simulator",
+          "version": 1,
+          "payload": {
+            "patient_id": "P-DEMO-001",
+            "encounter_id": "E-DEMO-001",
+            "department": "CARDIOLOGY"
+          }
+        }
+      ],
+      "expected": {
+        "current_patients": 0,
+        "by_department": {
+          "ICU": 0,
+          "CARDIOLOGY": 0
+        }
+      }
+    },
+    {
+      "step_id": "discharge_replay",
+      "as_of": "2026-11-24T02:01:00Z",
+      "events": [
+        {
+          "event_id": "overnight-d1",
+          "event_type": "DISCHARGE",
+          "event_time": "2026-11-24T02:00:00Z",
+          "source": "hospital-simulator",
+          "version": 1,
+          "payload": {
+            "patient_id": "P-DEMO-001",
+            "encounter_id": "E-DEMO-001",
+            "department": "CARDIOLOGY"
+          }
+        }
+      ],
+      "expected": {
+        "current_patients": 0,
+        "by_department": {
+          "ICU": 0,
+          "CARDIOLOGY": 0
+        }
+      }
+    }
+  ]
+}

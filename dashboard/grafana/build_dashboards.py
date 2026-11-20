@@ -7,6 +7,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 TRINO = {"type": "trino-datasource", "uid": "hospital-trino"}
 CLICKHOUSE = {"type": "grafana-clickhouse-datasource", "uid": "hospital-clickhouse"}
+PROMETHEUS = {"type": "prometheus", "uid": "hospital-prometheus"}
 
 # Default synthetic batch window (generators/batch_generator/config.yaml). Gold
 # holds nothing after it, so relative "now-30d" ranges would render empty.
@@ -46,8 +47,7 @@ def dashboard(uid, title, panels, *, refresh="", from_time="now-30d", to_time="n
 
 
 def build():
-    # The ClickHouse columns below are a proposed TV1/TV2/TV3 handoff for
-    # Week 5. Historical panels only reference Gold columns already in main.
+    # Serving views are defined in sql/clickhouse/live_schema.sql.
     overview = dashboard("hospital-overview", "Hospital Overview", [
         panel(1, "Current patients", CLICKHOUSE,
               "SELECT current_patients FROM hospital.realtime_hospital_state ORDER BY event_time DESC LIMIT 1", kind="stat", width=4),
@@ -94,10 +94,30 @@ def build():
         panel(6, "Patients by department (patient-days)", TRINO,
               "SELECT department, sum(unique_patients) AS patient_days FROM iceberg.gold.department_daily_metrics GROUP BY department ORDER BY patient_days DESC", kind="table", y=16, x=12),
     ], from_time=HISTORY_FROM, to_time=HISTORY_TO)
+    metrics = [
+        ('Kafka backlog by query', 'sum by (query) (hospital_kafka_lag)'),
+        ('Spark scanned rows/s (includes rereads)', 'hospital_stream_processed_rows_per_second'),
+        ('Micro-batch duration (seconds)', 'hospital_stream_batch_duration_seconds'),
+        ('Rows dropped as late (last batch)', 'hospital_stream_batch_late_events'),
+        ('Duplicate events (last batch)', 'hospital_stream_batch_duplicate_events'),
+        ('Streaming processes available', 'up{job="hospital-stream"} * hospital_stream_active'),
+    ]
+    monitoring_panels = []
+    for i, (title, expr) in enumerate(metrics):
+        value = panel(i+1, title, PROMETHEUS, '', y=(i//2)*8, x=(i%2)*12)
+        value['targets'] = [dict(refId='A', expr=expr, legendFormat='{{query}}', range=True)]
+        if expr == 'hospital_stream_processed_rows_per_second':
+            value['description'] = ('Spark can read the same micro-batch several times inside foreachBatch. '
+                                    'This is scanned rows/s, not distinct Kafka events/s. '
+                                    'Use the benchmark offset-based measurements for event throughput.')
+        monitoring_panels.append(value)
+    monitoring = dashboard('pipeline-monitoring', 'Pipeline Monitoring', monitoring_panels,
+                           refresh='10s', from_time='now-30m')
     return {
         "hospital-overview.json": overview,
         "realtime-operations.json": realtime,
         "historical-analytics.json": historical,
+        "pipeline-monitoring.json": monitoring,
     }
 
 

@@ -1,0 +1,9 @@
+<clickhouse>
+  <prometheus>
+    <port>9363</port>
+    <endpoint>/metrics</endpoint>
+    <metrics>true</metrics>
+    <asynchronous_metrics>true</asynchronous_metrics>
+    <events>true</events>
+  </prometheus>
+</clickhouse>

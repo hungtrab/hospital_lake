@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HospitalLake · Chất lượng dữ liệu</title>
+  <meta name="description" content="Xem kết quả làm sạch, đối chiếu dữ liệu và rà soát lỗi HospitalLake.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%23137967'/%3E%3Cpath d='M12 10v20m16-20v20M12 20h16' stroke='white' stroke-width='4'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Đến nội dung chính</a>
+  <aside class="sidebar">
+    <a href="/" class="brand"><span class="brand-icon" aria-hidden="true">H<span>+</span></span><span>HospitalLake<small>DATA WORKSPACE</small></span></a>
+    <div class="nav-label">QUẢN LÝ DỮ LIỆU</div>
+    <nav aria-label="Điều hướng chính">
+      <button class="nav active" data-view="overview"><span aria-hidden="true">◫</span>Tổng quan</button>
+      <button class="nav" data-view="scenarios"><span aria-hidden="true">≋</span>Kịch bản & rà soát<span class="nav-count" id="scenario-count">—</span></button>
+      <button class="nav" data-view="history"><span aria-hidden="true">↺</span>Lịch sử chạy</button>
+    </nav>
+    <div class="sidebar-note"><span class="dot"></span>Môi trường local<p>Dữ liệu bệnh viện giả lập.<br>Phạm vi: kiểm tra batch.</p></div>
+    <div class="profile"><span class="avatar">22</span><div>Group 22<small>HospitalLake project</small></div></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong>Chất lượng dữ liệu</strong></div><span class="environment"><span class="dot"></span> Dữ liệu giả lập</span></header>
+    <main id="main">
+      <div class="heading"><div><div class="eyebrow">HOSPITALLAKE / DATA QUALITY</div><h1 id="page-title">Chất lượng dữ liệu</h1><p id="page-description">Hiểu dữ liệu đi vào. Kiểm soát dữ liệu đi ra.</p></div><button class="primary" id="run-button"><span aria-hidden="true">▶</span> Chạy bộ kiểm tra</button></div>
+      <div id="error" class="error" role="alert" hidden></div>
+      <section id="job-panel" class="job-panel" hidden aria-label="Tiến trình kiểm tra"><div class="section-heading"><div><strong id="job-title">Đang kiểm tra</strong><p id="job-description"></p></div><button class="text-button" id="log-toggle" aria-expanded="false">Xem nhật ký</button></div><pre id="job-log" hidden></pre></section>
+      <div class="run-toolbar"><div><label for="run-select">Kết quả đang xem</label><select id="run-select" aria-label="Chọn lần chạy"><option>Đang tải…</option></select></div><div class="toolbar-actions"><span id="run-badge" class="badge neutral">Đang tải</span><a id="download" class="secondary" hidden>Tải JSON <span aria-hidden="true">↓</span></a><button id="refresh" class="icon-button" title="Làm mới" aria-label="Làm mới">↻</button></div></div>
+      <section id="empty" class="empty-state" hidden><span class="empty-icon" aria-hidden="true">◫</span><h2>Chưa có kết quả để xem</h2><p>Chạy bộ kiểm tra để tạo dữ liệu mẫu, làm sạch và nhận báo cáo trước/sau.</p><button class="primary" id="empty-run">Chạy bộ kiểm tra đầu tiên</button></section>
+      <div id="report-content" hidden>
+        <section class="stats" aria-label="Số lượng bản ghi">
+          <article class="stat"><span class="stat-label">Dữ liệu đầu vào <span class="stat-symbol">↘</span></span><strong id="total-input">—</strong><small>Giữ nguyên tại Bronze</small></article>
+          <article class="stat"><span class="stat-label">Được chấp nhận <span class="stat-symbol green">✓</span></span><strong id="total-valid">—</strong><small>Đưa vào Silver để phân tích</small></article>
+          <article class="stat"><span class="stat-label">Bị cách ly <span class="stat-symbol amber">!</span></span><strong id="total-rejected">—</strong><small>Giữ riêng, có lý do cụ thể</small></article>
+          <article class="stat"><span class="stat-label">Bản sao đã gộp <span class="stat-symbol">⧉</span></span><strong id="total-duplicates">—</strong><small>Không đếm lặp trong báo cáo</small></article>
+        </section>
+        <section id="view-overview" class="view">
+          <div class="overview-grid">
+            <article class="panel flow-panel"><div class="section-heading"><div><h2>Dữ liệu được xử lý thế nào?</h2><p>Mọi bản ghi đều có kết quả xử lý rõ ràng.</p></div><span class="badge green" id="accounting">Đang kiểm tra</span></div><div class="flow"><div><span class="flow-step">01 / NGUỒN</span><strong>Bronze</strong><small>Dữ liệu gốc</small></div><span class="flow-arrow" aria-hidden="true">→</span><div><span class="flow-step">02 / LÀM SẠCH</span><strong>Silver</strong><small>Chuẩn hóa & kiểm tra</small></div><span class="flow-arrow" aria-hidden="true">→</span><div><span class="flow-step">03 / BÁO CÁO</span><strong>Gold</strong><small>Tổng hợp kết quả</small></div></div><div class="stacked-bar" id="distribution" aria-label="Phân bố kết quả xử lý"></div><div class="legend" id="legend"></div><p class="footnote">Bản ghi cách ly được giữ lại để đối chiếu, không bị xóa khỏi nguồn.</p></article>
+            <article class="panel validation-panel"><span class="eyebrow">KIỂM CHỨNG BẰNG KỊCH BẢN</span><div class="validation-number"><strong id="checks-passed">—</strong><span id="checks-total">/ —</span></div><h2 id="validation-title">Kịch bản đạt kỳ vọng</h2><p>Bao gồm dữ liệu lỗi có chủ đích và dữ liệu hợp lệ cần được giữ.</p><div class="validation-footer"><span id="rerun-check">—</span><button class="text-button" id="see-scenarios">Xem kịch bản →</button></div></article>
+          </div>
+          <article class="panel"><div class="section-heading"><div><h2>Chất lượng theo bảng dữ liệu</h2><p>Sáu nhóm dữ liệu trong cùng một lần kiểm tra.</p></div><span class="muted" id="entity-count"></span></div><div class="table-scroll"><table><thead><tr><th>Bảng dữ liệu</th><th>Đầu vào</th><th>Chấp nhận</th><th>Cách ly</th><th>Bản sao gộp</th><th>Phân bố</th></tr></thead><tbody id="entity-rows"></tbody></table></div></article>
+          <div class="bottom-grid"><article class="panel"><div class="section-heading"><div><h2>Lý do cách ly thường gặp</h2><p>Một bản ghi có thể có nhiều lý do.</p></div></div><div id="reason-list"></div></article><article class="panel gold-panel"><div class="section-heading"><div><h2>Kết quả sau làm sạch</h2><p>Đọc từ Gold của bộ dữ liệu mẫu đang chọn.</p></div><span class="badge neutral">Gold</span></div><div id="gold-metrics"></div><p class="footnote">Đây là chỉ số của bộ mẫu, không phải số liệu vận hành bệnh viện.</p></article></div>
+        </section>
+        <section id="view-scenarios" class="view" hidden>
+          <article class="panel"><div class="section-heading"><div><h2>Kịch bản & rà soát</h2><p>Chọn một kịch bản để xem dữ liệu gốc, kết quả và ghi chú.</p></div><span id="filtered-count" class="muted"></span></div>
+            <div class="filters"><div class="search-box"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Tìm mã, mô tả hoặc lý do lỗi…" aria-label="Tìm kịch bản"></div><select id="entity-filter" aria-label="Lọc theo bảng"><option value="">Tất cả bảng</option></select><select id="outcome-filter" aria-label="Lọc theo kết quả"><option value="">Tất cả kết quả</option><option value="quarantine">Bị cách ly</option><option value="accepted">Được chấp nhận</option><option value="duplicate">Có bản sao gộp</option></select><select id="review-filter" aria-label="Lọc trạng thái rà soát"><option value="">Tất cả rà soát</option><option value="pending">Chưa rà soát</option><option value="reviewed">Đã rà soát</option><option value="investigate">Cần kiểm tra thêm</option></select></div>
+            <div class="table-scroll"><table class="scenario-table"><thead><tr><th>Kịch bản</th><th>Bảng</th><th>Kết quả xử lý</th><th>Rà soát</th><th><span class="sr-only">Chi tiết</span></th></tr></thead><tbody id="scenario-rows"></tbody></table></div><div id="no-matches" class="no-matches" hidden>Không có kịch bản phù hợp. Thử đổi từ khóa hoặc bộ lọc.</div>
+          </article>
+        </section>
+      </div>
+      <section id="view-history" class="view" hidden><article class="panel"><div class="section-heading"><div><h2>Lịch sử kiểm tra</h2><p>Mỗi lần chạy tạo kết quả riêng, giữ nguyên những lần trước.</p></div></div><div class="table-scroll"><table><thead><tr><th>Lần chạy</th><th>Thời gian tạo</th><th>Trạng thái</th><th>Kịch bản</th><th></th></tr></thead><tbody id="history-rows"></tbody></table></div><p id="history-empty" class="no-matches" hidden>Chưa có lần chạy nào.</p></article></section>
+      <footer>HospitalLake <span>·</span> Quản lý chất lượng dữ liệu <span>·</span> Batch demo local <span class="footer-right">Bronze được giữ nguyên.</span></footer>
+    </main>
+  </div>
+  <dialog id="detail-dialog" aria-labelledby="detail-title"><div class="dialog-heading"><div><span class="eyebrow" id="detail-id"></span><h2 id="detail-title"></h2></div><button class="icon-button" id="close-dialog" aria-label="Đóng chi tiết">✕</button></div><div class="dialog-body"><div id="detail-badges" class="detail-badges"></div><div id="detail-reasons" class="reason-box" hidden></div><h3>Đối chiếu dữ liệu</h3><p class="muted small">Các trường thay đổi được tô màu. Với bản ghi cách ly, dữ liệu gốc nằm trong phần đầy đủ bên dưới.</p><div class="table-scroll"><table class="diff-table"><thead><tr><th>Trường</th><th>Dữ liệu trước xử lý</th><th>Dữ liệu sau xử lý</th></tr></thead><tbody id="diff-rows"></tbody></table></div><details><summary>Xem đầy đủ bản ghi gốc và kết quả</summary><pre id="raw-json"></pre></details><form id="review-form"><h3>Ghi chú rà soát</h3><p class="muted small">Chỉ lưu đánh giá của bạn. Không sửa bản ghi hoặc đưa dữ liệu cách ly vào Silver.</p><label for="review-status">Trạng thái</label><select id="review-status"><option value="pending">Chưa rà soát</option><option value="reviewed">Đã rà soát</option><option value="investigate">Cần kiểm tra thêm</option></select><label for="review-note">Ghi chú</label><textarea id="review-note" rows="3" maxlength="4000" placeholder="Ví dụ: Đơn vị chưa được hỗ trợ; cần đối chiếu quy tắc nguồn."></textarea><div class="review-actions"><span id="review-feedback" role="status"></span><button class="primary" type="submit">Lưu rà soát</button></div></form></div></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

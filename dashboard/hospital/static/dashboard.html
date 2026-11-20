@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dashboard · HospitalLake</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/dashboard.css"></head>
+<body><header><a class="brand" href="/"><span class="mark">H</span><span>HospitalLake<small>GROUP 22 · BỆNH VIỆN MÔ PHỎNG</small></span></a>
+<nav aria-label="Điều hướng"><a href="/#overview">Tổng quan</a><a href="/dashboard.html" aria-current="page">Dashboard</a><a href="/map.html">Bản đồ</a><a href="/#patients">Người bệnh</a><a href="/manual.html">Nhập tay</a><a href="/#reports">Báo cáo</a></nav></header>
+<main><div class="dash-head"><div><h1>Dashboard vận hành</h1><p class="muted">Dữ liệu mô phỏng · Giờ Hà Nội · Tự cập nhật mỗi 30 giây</p></div><button class="secondary" id="refresh">Làm mới</button></div>
+<div class="metrics"><article><span>Lượt đến hôm nay</span><strong id="arrivals">—</strong></article><article><span>Nhập viện hôm nay</span><strong id="admissions">—</strong></article><article><span>Xuất viện hôm nay</span><strong id="discharges">—</strong></article><article><span>Đang nằm viện</span><strong id="current">—</strong></article></div>
+<section id="visit-charts" aria-labelledby="chart-heading">
+<div class="section-title"><div><h2 id="chart-heading">Hoạt động trong ngày</h2><p id="charts-note" class="muted small" role="status">Đang đọc các sự kiện trong ngày…</p></div></div>
+<div class="dash-grid">
+<article class="panel"><h3>Lượt đến và nhập viện theo giờ</h3><p class="muted small">Giờ Hà Nội. Chọn một cột để xem số lượt trong giờ đó.</p>
+<div class="flow-key"><span>Đến khám</span><span>Nhập viện</span></div><div id="hour-chart" class="hour-chart"></div>
+<div class="hour-axis" aria-hidden="true"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>24h</span></div>
+<p id="hour-detail" class="chart-detail" role="status">—</p></article>
+<article class="panel"><h3>Thời gian chờ đến khi vào khám</h3><p class="muted small">Tính từ lúc đến viện đến khi bắt đầu khám, cho các lượt bắt đầu khám hôm nay.</p><div id="wait-chart"></div></article>
+<article class="panel"><h3>Tuổi người đến khám</h3><p class="muted small">Mỗi lần đăng ký tính một lượt.</p><div id="age-chart"></div></article>
+<article class="panel"><h3>Nhóm bệnh khi đăng ký</h3><p class="muted small">Số lượt và tỷ lệ trên toàn bộ lượt đăng ký hôm nay.</p><div id="condition-chart"></div><details id="more-conditions" hidden><summary>Xem các nhóm còn lại</summary><div id="condition-rest"></div></details></article>
+</div></section>
+<div class="dash-grid"><section class="panel"><div class="section-title"><h2>Nhập viện và xuất viện</h2><label class="period">Khoảng xem <select id="range"><option value="7">7 ngày</option><option value="14">14 ngày</option></select></label></div>
+<div class="flow-key"><span>Nhập viện</span><span>Xuất viện</span></div>
+<div id="flow"></div><p id="history-note" class="muted small" role="status">Đang tải biểu đồ…</p></section>
+<section class="panel"><h2>Đường đi của dữ liệu</h2><dl class="processing"><dt>Mô phỏng tự động</dt><dd id="enabled">—</dd><dt>Kafka đã xác nhận</dt><dd id="sent">—</dd><dt>Lần gửi mới nhất</dt><dd id="sent-at">—</dd><dt>Sự kiện trong lô Spark gần nhất</dt><dd id="processed">—</dd><dt>Độ trễ P95 của lô</dt><dd id="latency">—</dd><dt>Bản cập nhật ClickHouse</dt><dd id="published">—</dd></dl>
+<details class="data-path"><summary>Xem sơ đồ xử lý</summary>
+<p>Bệnh nhân giả lập hoặc thao tác nhập tay</p><span aria-hidden="true">↓</span><p>Kafka nhận sự kiện → Spark kiểm tra dữ liệu</p>
+<div class="data-branches"><p><strong>Kho lịch sử</strong><br>Iceberg trên MinIO → Trino<br><small>Biểu đồ và hành trình</small></p><p><strong>Số liệu hiện tại</strong><br>ClickHouse<br><small>Số người nằm viện và độ trễ</small></p></div></details>
+<p id="status-note" class="muted small" role="status"></p><p id="overview-note" class="muted small" role="status"></p></section></div>
+<div class="dash-grid" id="tracking"><section class="panel"><h2>Theo dõi một lượt khám</h2>
+<form id="track-form" class="filter-bar"><label class="wide">Mã lượt khám<input type="text" id="visit" maxlength="120" pattern="[A-Za-z0-9_\-]{1,120}" placeholder="E-BM-…" required></label><button>Theo dõi</button></form>
+<p class="muted small" id="tracking-note" role="status">Nhập mã hoặc chọn một lượt gần đây. Lựa chọn được lưu trên trình duyệt này.</p>
+<div id="track-tools" hidden><strong id="tracked-id"></strong> <button type="button" id="untrack" class="secondary">Bỏ theo dõi</button></div>
+<ol class="timeline" id="tracked-events"></ol></section>
+<section class="panel"><h2>Lượt vừa cập nhật</h2><p id="recent-note" class="muted small" role="status">Đang tải…</p><div id="recent"></div></section></div>
+</main><script src="/shared.js" defer></script><script src="/dashboard.js" defer></script></body></html>

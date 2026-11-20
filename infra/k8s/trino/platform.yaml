@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: trino
+  namespace: hospital-lake
+spec:
+  selector:
+    app: trino
+  ports:
+  - name: p8080
+    port: 8080
+    targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trino
+  namespace: hospital-lake
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: trino
+  template:
+    metadata:
+      labels:
+        app: trino
+    spec:
+      containers:
+      - name: trino
+        image: trinodb/trino:483
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 2Gi
+        envFrom:
+        - configMapRef:
+            name: hospital-config
+        - secretRef:
+            name: hospital-secrets
+        volumeMounts:
+        - name: trino-config
+          mountPath: /etc/trino/config.properties
+          subPath: config.properties
+        - name: trino-config
+          mountPath: /etc/trino/jvm.config
+          subPath: jvm.config
+        - name: trino-config
+          mountPath: /etc/trino/catalog/iceberg.properties
+          subPath: iceberg.properties
+        readinessProbe:
+          httpGet:
+            path: /v1/info
+            port: 8080
+          periodSeconds: 5
+          failureThreshold: 24
+      volumes:
+      - name: trino-config
+        configMap:
+          name: trino-config

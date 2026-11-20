@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hospital-prometheus
+  namespace: hospital-lake
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: hospital-prometheus
+rules:
+  - apiGroups: ['']
+    resources: [nodes, nodes/proxy]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hospital-prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: hospital-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: hospital-prometheus
+    namespace: hospital-lake

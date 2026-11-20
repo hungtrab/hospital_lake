@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: iceberg-catalog
+  namespace: hospital-lake
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: iceberg-rest
+  namespace: hospital-lake
+spec:
+  selector:
+    app: iceberg-rest
+  ports:
+  - name: p8181
+    port: 8181
+    targetPort: 8181
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: iceberg-rest
+  namespace: hospital-lake
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iceberg-rest
+  template:
+    metadata:
+      labels:
+        app: iceberg-rest
+    spec:
+      containers:
+      - name: iceberg-rest
+        image: hospital-lake/iceberg-rest:1.9.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8181
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 640Mi
+        envFrom:
+        - configMapRef:
+            name: hospital-config
+        - secretRef:
+            name: hospital-secrets
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          value: $(MINIO_ACCESS_KEY)
+        - name: AWS_SECRET_ACCESS_KEY
+          value: $(MINIO_SECRET_KEY)
+        - name: AWS_REGION
+          value: us-east-1
+        - name: CATALOG_WAREHOUSE
+          value: s3://warehouse/
+        - name: CATALOG_URI
+          value: jdbc:sqlite:/var/lib/iceberg/catalog.db?journal_mode=WAL
+        - name: CATALOG_CLIENTS
+          value: '1'
+        - name: CATALOG_IO__IMPL
+          value: org.apache.iceberg.aws.s3.S3FileIO
+        - name: CATALOG_S3_ENDPOINT
+          value: http://minio:9000
+        - name: CATALOG_S3_PATH__STYLE__ACCESS
+          value: 'true'
+        - name: JAVA_TOOL_OPTIONS
+          value: -Xmx384m
+        volumeMounts:
+        - name: iceberg-catalog
+          mountPath: /var/lib/iceberg
+        readinessProbe:
+          httpGet:
+            path: /v1/config
+            port: 8181
+          periodSeconds: 5
+          failureThreshold: 24
+      volumes:
+      - name: iceberg-catalog
+        persistentVolumeClaim:
+          claimName: iceberg-catalog
+      securityContext:
+        fsGroup: 1000
+  serviceName: iceberg-rest

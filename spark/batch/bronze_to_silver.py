@@ -41,6 +41,8 @@ from spark.common.normalization import (
     ENCOUNTER_TYPES,
     GENDERS,
     canonical_department,
+    canonical_lab_unit,
+    lab_dictionary_value,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -181,10 +183,27 @@ def _finite(name):
     return value.isNotNull() & ~F.isnan(value) & (F.abs(value) != F.lit(float("inf")))
 
 
+def _lab_prepare(frame, silver):
+    from pyspark.sql import functions as F
+
+    code = F.upper(F.trim("test_code"))
+    return (_clinical_prepare(frame, silver)
+            .withColumn("_chk_test_code", code)
+            .withColumn("_chk_test_name", lab_dictionary_value(code, 0))
+            .withColumn("_chk_expected_unit", lab_dictionary_value(code, 1))
+            .withColumn("_chk_unit", canonical_lab_unit(F.col("unit"))))
+
+
 def _lab_rules(frame):
     from pyspark.sql import functions as F
 
+    name = F.lower(F.trim(F.regexp_replace("test_name", r"[ \t\r\n]+", " ")))
+    known = F.col("_chk_test_name").isNotNull()
     return dict(_clinical_rules(frame),
+                UNKNOWN_LAB_TEST=known,
+                LAB_TEST_NAME_MISMATCH=(~known | (name == F.lower("_chk_test_name"))),
+                UNSUPPORTED_LAB_UNIT=(~known | (F.col("_chk_unit").isNotNull()
+                                               & (F.col("_chk_unit") == F.col("_chk_expected_unit")))),
                 INVALID_LAB_VALUE=_finite("result_value"),
                 INVALID_REFERENCE_RANGE=(_finite("reference_low") & _finite("reference_high")
                                          & (F.col("reference_low") <= F.col("reference_high"))))
@@ -195,7 +214,9 @@ def _lab_output(frame):
 
     abnormal = ((F.col("result_value") < F.col("reference_low"))
                 | (F.col("result_value") > F.col("reference_high")))
-    return [abnormal.alias(name) if name == "is_abnormal" else F.col(name)
+    normalized = {"test_code": "_chk_test_code", "test_name": "_chk_test_name", "unit": "_chk_unit"}
+    return [abnormal.alias(name) if name == "is_abnormal"
+            else F.col(normalized[name]).alias(name) if name in normalized else F.col(name)
             for name in CLINICAL_COLUMNS["lab_results"]]
 
 
@@ -270,7 +291,7 @@ ENTITIES: Tuple[SilverEntity, ...] = (
     SilverEntity(
         name="lab_results", key="lab_result_id",
         required=("lab_result_id", "patient_id", "encounter_id", "test_code", "test_name", "unit", "measured_at"),
-        prepare=_clinical_prepare, rules=_lab_rules, output=_lab_output, depends_on=("encounters",),
+        prepare=_lab_prepare, rules=_lab_rules, output=_lab_output, depends_on=("encounters",),
     ),
     SilverEntity(
         name="bed_events", key="event_id",
@@ -328,7 +349,7 @@ def transform_entity(entity: SilverEntity, bronze, silver: Mapping[str, object],
         F.lit(entity.name).alias("entity"),
         F.col(entity.key).cast("string").alias("record_key"),
         F.col(REASON_COLUMN).alias("reason_codes"),
-        F.to_json(F.struct(*source_columns)).alias("raw_record"),
+        F.to_json(F.struct(*source_columns), {"ignoreNullFields": "false"}).alias("raw_record"),
         F.col("_bronze_batch_id"),
         processed,
     )

@@ -181,6 +181,8 @@ Processing order per entity:
 2. Values are normalized: department spellings map to the five canonical names
    through `spark/common/normalization.py` (`ER`, `ED`, `Emergency Department`
    → `EMERGENCY`; `Cardio` → `CARDIOLOGY`; ...).
+   Only case and known separators (whitespace, underscore, hyphen) are normalized;
+   digits/arbitrary punctuation are not erased (`ER123` and `E/R` are rejected).
 3. `spark/common/data_quality.py` applies required columns and rules. Rows that
    share a key but differ in value are all quarantined (`DUPLICATE_KEY`).
 
@@ -304,8 +306,26 @@ Each clinical table keeps its Bronze domain columns/types plus
 `_bronze_batch_id` and `_processed_at`. Labs recompute `is_abnormal`:
 values strictly below/above the reference interval are abnormal; endpoints
 are normal. The source flag is ignored. Missing/nonfinite values or reversed
-reference bounds are quarantined. Reference intervals and units remain those
-of the source test; no cross-test unit conversion is inferred.
+reference bounds are quarantined. Reference intervals and numeric values remain
+those of the source test. Supported unit spellings are canonicalized without
+numeric conversion. The seven synthetic test codes in
+`spark/common/normalization.py` define the accepted name/unit pairs; unknown
+codes, contradictory names or unsupported units are quarantined. Unit prefixes
+remain case-sensitive (`MG` is not accepted as `mg`).
+
+| Code | Canonical name | Canonical unit |
+|---|---|---|
+| GLU | Glucose | mg/dL |
+| HGB | Hemoglobin | g/dL |
+| WBC | White Blood Cell Count | 10^9/L |
+| NA | Sodium | mmol/L |
+| K | Potassium | mmol/L |
+| CREA | Creatinine | mg/dL |
+| LACT | Lactate | mmol/L |
+
+Code/name case and surrounding spaces are normalized. Names also collapse
+repeated whitespace. Units accept lowercase `l` for litre and spaces around
+the slash; numeric values and reference bounds are never rescaled.
 
 All four check `encounter_id` against **valid Silver encounters**, not Bronze.
 Children of rejected encounters receive `UNKNOWN_ENCOUNTER`. A known encounter
@@ -316,7 +336,7 @@ duplicate keys quarantine (including invalid variants) using the existing shared
 
 | Entity | Additional rules / normalization |
 |---|---|
-| `lab_results` | `INVALID_LAB_VALUE`, `INVALID_REFERENCE_RANGE`; recomputed boolean is directly consumed by Gold |
+| `lab_results` | `INVALID_LAB_VALUE`, `INVALID_REFERENCE_RANGE`, `UNKNOWN_LAB_TEST`, `LAB_TEST_NAME_MISMATCH`, `UNSUPPORTED_LAB_UNIT`; canonical code/name/unit and recomputed boolean are directly consumed by Gold |
 | `bed_events` | Canonical department aliases; unknown departments → `UNKNOWN_DEPARTMENT`; event type trimmed/lowercase, only `assigned/transferred/released` (`INVALID_BED_EVENT_TYPE`) |
 | `medications` | Finite positive dose (`INVALID_DOSE`); optional end time >= start (`END_BEFORE_START`); trim drug/unit, lowercase route; dose units retain case (`mL`) |
 | `vitals` | Positive heart rate; finite SpO2 in [0,100]; positive BP with systolic >= diastolic; finite temperature in [25,45] Celsius. Failures receive `INVALID_HEART_RATE`, `INVALID_SPO2`, `INVALID_BLOOD_PRESSURE`, `INVALID_TEMPERATURE` respectively. Missing measurements fail these rules. |
@@ -324,6 +344,11 @@ duplicate keys quarantine (including invalid variants) using the existing shared
 Temperature bounds are broad synthetic-data validation bounds, not medical
 recommendations. Source units are bpm, percent, mmHg and Celsius; values are
 not rescaled. Bronze source types already enforce typed UTC timestamps.
+
+Quarantine `raw_record` includes explicit JSON null fields. Rebuild all Silver
+and then Gold when applying the stricter rules; table schemas are unchanged.
+See [the dirty-data demo and policy](data-cleaning.md) for 36 executable scenarios
+and the limits of automatic correction.
 
 Clinical tables use monthly hidden partitions on `measured_at` (labs/vitals),
 `event_time` (beds), and `start_time` (medications), following the existing Silver
@@ -382,3 +407,10 @@ A second clinical rebuild retained identical counts and order-insensitive
 Trino full-row checksums for all six Silver tables and the complete quarantine
 table, excluding only `_processed_at`. Each clinical quarantine partition was
 replaced without accumulating rows or changing upstream entity partitions.
+
+The live provincial profile records outpatient visits with `PATIENT_REGISTERED`,
+`VITAL_MEASUREMENT`, `CONSULTATION_STARTED` and optionally `LAB_RESULT`.
+`OUTPATIENT_COMPLETED` ends an outpatient visit. Inpatients continue with
+admission, bed assignment, release and discharge. The event payload carries
+`specialty` and, when applicable, room, nurse and doctor IDs and wait duration.
+The dashboard joins the Silver ledger to the original Bronze payload by event ID.

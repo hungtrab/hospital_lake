@@ -1,0 +1,88 @@
+# Run from repository root after docker-compose.yml, with a private env file.
+services:
+  minio:
+    pull_policy: never
+  iceberg-rest:
+    pull_policy: never
+  trino:
+    restart: unless-stopped
+  grafana:
+    restart: unless-stopped
+  stream:
+    image: hospital-lake/spark:completion
+    pull_policy: never
+    user: '185'
+    environment:
+      REALTIME_ICU_BEDS: ${REALTIME_ICU_BEDS:-160}
+      PYTHONPATH: /opt/hospital-lake
+    entrypoint:
+      - /opt/spark/bin/spark-submit
+      - --driver-memory
+      - 1g
+      - --conf
+      - spark.jars.ivy=/opt/ivy
+      - --packages
+      - org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.9.0,org.apache.iceberg:iceberg-aws-bundle:1.9.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.5
+      - --exclude-packages
+      - org.apache.hadoop:hadoop-client-runtime,org.apache.hadoop:hadoop-client-api,org.lz4:lz4-java,org.xerial.snappy:snappy-java,org.slf4j:slf4j-api,commons-logging:commons-logging,com.google.code.findbugs:jsr305
+      - spark/streaming/realtime_aggregates.py
+  hospital-api:
+    build:
+      context: .
+      dockerfile: infra/deploy/api.Dockerfile
+    image: hospital-lake/api:live
+    environment:
+      HOSPITAL_SERVICE_TOKEN: ${HOSPITAL_SERVICE_TOKEN:?required}
+      HOSPITAL_ADMIN_TOKEN: ${HOSPITAL_ADMIN_TOKEN:?required}
+      SIM_START_DATE: ${SIM_START_DATE:-2026-11-21}
+      SIM_PROFILE: ${SIM_PROFILE:-bach-mai-v1}
+      SIM_DAILY_VISITS: ${SIM_DAILY_VISITS:-5315}
+      HOSPITAL_STATE_DIR: /state
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPICS: hospital.events
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: grafana_reader
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_GRAFANA_PASSWORD:?required}
+      TRINO_URL: http://trino:8080
+    volumes:
+      - .:/app:ro
+      - daily-producer-state:/state
+    ports:
+      - '127.0.0.1:28088:8088'
+    networks: [hospital-lake]
+    mem_limit: 384m
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://localhost:8088/healthz",timeout=3)']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  live-batch:
+    image: hospital-lake/spark:completion
+    pull_policy: never
+    working_dir: /opt/hospital-lake
+    entrypoint: ['python3', 'scripts/live_batch_loop.py']
+    environment:
+      PYTHONPATH: /opt/hospital-lake
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?required}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?required}
+      ICEBERG_CATALOG_URI: http://iceberg-rest:8181
+      ICEBERG_WAREHOUSE: s3://warehouse/
+      SPARK_MASTER: local[1]
+      LIVE_BATCH_INTERVAL: '3600'
+    volumes:
+      - .:/opt/hospital-lake:ro
+    networks: [hospital-lake]
+    mem_limit: 2g
+    restart: unless-stopped
+  tunnel:
+    image: cloudflare/cloudflared:2026.11.1
+    command: ['tunnel', '--no-autoupdate', 'run']
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?required}
+    networks: [hospital-lake]
+    mem_limit: 192m
+    restart: unless-stopped
+volumes:
+  daily-producer-state:

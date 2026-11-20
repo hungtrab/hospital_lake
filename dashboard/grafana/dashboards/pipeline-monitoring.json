@@ -1,0 +1,191 @@
+{
+  "uid": "pipeline-monitoring",
+  "title": "Pipeline Monitoring",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "tags": [
+    "HospitalLake",
+    "synthetic-data"
+  ],
+  "timezone": "utc",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Kafka backlog by query",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hospital-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (query) (hospital_kafka_lag)",
+          "legendFormat": "{{query}}",
+          "range": true
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 2,
+      "title": "Spark scanned rows/s (includes rereads)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hospital-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hospital_stream_processed_rows_per_second",
+          "legendFormat": "{{query}}",
+          "range": true
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "description": "Spark can read the same micro-batch several times inside foreachBatch. This is scanned rows/s, not distinct Kafka events/s. Use the benchmark offset-based measurements for event throughput."
+    },
+    {
+      "id": 3,
+      "title": "Micro-batch duration (seconds)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hospital-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hospital_stream_batch_duration_seconds",
+          "legendFormat": "{{query}}",
+          "range": true
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "title": "Rows dropped as late (last batch)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hospital-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hospital_stream_batch_late_events",
+          "legendFormat": "{{query}}",
+          "range": true
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 5,
+      "title": "Duplicate events (last batch)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hospital-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hospital_stream_batch_duplicate_events",
+          "legendFormat": "{{query}}",
+          "range": true
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "title": "Streaming processes available",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "hospital-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"hospital-stream\"} * hospital_stream_active",
+          "legendFormat": "{{query}}",
+          "range": true
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    }
+  ],
+  "templating": {
+    "list": []
+  }
+}
