@@ -1,5 +1,61 @@
 # HospitalLake — 9-Week Work Allocation
 
+## Lịch mới: sẵn sàng vận hành từ 21/11/2026
+
+Theo yêu cầu mới ngày 19/11, Hùng hoàn thiện các task và tích hợp VPS/website,
+không chờ bàn giao thêm từ TV2–TV4. Website Cloudflare đã nối VPS `homecoming`.
+VPS đã bật chạy thử ngày 19/11. Lịch chính từ 21/11 dùng mô hình Poisson theo giờ, quy mô trung bình 5.315 lượt/ngày theo quy mô Bệnh viện Bạch Mai, Hà Nội.
+Gate realtime có restart, API thật, Gold chạy lại và giao diện đã được kiểm chứng.
+Cập nhật tiếp trong ngày 19/11: cụm Kubernetes mới đã qua batch, realtime,
+scale 2→4 và phục hồi có tải. Kết quả đo ở `progress.md`.
+Chi tiết vận hành: [docs/live-deployment.md](docs/live-deployment.md).
+
+### Điều chỉnh ngày 19/11: Hùng tự hoàn thành ba task độc lập
+
+Theo yêu cầu mới, **không giao thêm ba task nhỏ cho TV2–TV4**. Hùng/Codex đã
+implement và kiểm tra local cả ba phần trong [đặc tả](docs/independent-tasks.md):
+
+| Phần | Đầu ra | Kiểm chứng local |
+|---|---|---|
+| Lịch đến khám | `generators/stream_generator/daily_schedule.py`: config → lịch JSON, ID ổn định, giờ UTC | 7 unit tests; CLI chạy thật, timezone/đầu ngày/cuối ngày, input lỗi |
+| Đối chiếu qua đêm | `data/samples/overnight_journey.json` + `scripts/verify_patient_journey.py` | 6 unit tests; CLI PASS=0, số sai=1, JSON/schema sai=2 |
+| So sánh hai tuần | `sql/trino/department_week_comparison.sql` + `scripts/department_week_report.py` | 6 unit tests; thực thi file SQL bằng SQLite, đối chiếu output cố định |
+
+Bằng chứng: `results/independent-tasks-20261119/summary.json` và log/output cùng
+thư mục. Các công cụ chỉ dùng thư viện chuẩn; actual dùng thử comparator là
+fixture tổng hợp, không phải kết quả pipeline thật. SQLite PASS chưa chứng nhận
+Trino. Phần code này chưa commit/push và không được ghi nhận là đóng góp của TV2–TV4.
+
+### Phân công còn lại
+
+- **Hùng:** tích hợp code mới trên remote với bản local; nối ba công cụ vào
+  pipeline, làm toàn bộ web/API, VPS/Cloudflare và scheduler có lưu tiến độ.
+- **TV2–TV4:** giữ nguyên phần đóng góp đã có trên GitHub; không còn deadline
+  20/11 cho ba task nhỏ. Nếu phát hiện lỗi trong code các bạn đã bàn giao, ghi
+  rõ lỗi để phối hợp sửa; không tạo thêm việc chỉ để tăng số commit.
+- **21–22/11:** mục tiêu kiểm tra tích hợp, qua ngày, restart/persistence,
+  K8s/scale/recovery và fresh deploy. Gate chưa đạt phải ghi đúng là chưa đạt.
+- **23/11:** mục tiêu bắt đầu mô phỏng hằng ngày sau khi các gate đạt; chưa tạo
+  hoặc bật lịch tự động. Không suy ra hệ thống hoàn tất từ 19 unit tests local.
+
+### Máy chủ và giới hạn đã quan sát
+
+SSH alias `homecoming` truy cập được ngày 16/11. Có 16 CPU logic, khoảng 15 GiB RAM
+(8,3 GiB khả dụng tại lúc kiểm tra), ổ `/` còn 17 GiB/226 GiB. Docker có sẵn,
+không có container chạy; chưa tìm thấy `kubectl`/`cloudflared` trong PATH.
+Chưa kiểm chứng đủ tài nguyên cho toàn stack hoặc scale 4 executor. TV1 phải
+chốt profile RAM/disk và dành dung lượng cho dữ liệu trước triển khai; không tự
+xóa image/volume của project khác. Không chạy benchmark tải lớn trên dịch vụ
+hằng ngày; dùng môi trường/thời gian kiểm thử riêng.
+
+Phương án triển khai: giao diện/API gateway trên Cloudflare; backend xử lý,
+Kafka, Spark, MinIO/Iceberg, Trino, ClickHouse, Grafana/Prometheus trên máy chủ.
+Nối backend qua kết nối có xác thực; giữ database nội bộ. Chưa tạo Cloudflare
+deployment, tunnel hoặc lịch tự động. Mỗi bước triển khai phải ghi rõ điều đã
+kiểm chứng; demo một máy chủ không chứng minh HA hoặc scale nhiều máy.
+
+---
+
 > Kế hoạch chia việc cho **4 thành viên ngang hàng**, không phân biệt lead/phó/member.  
 > Mục tiêu: trong **9 tuần**, cả 4 người đều có **code chạy được mỗi tuần**, workload tương đối cân bằng, và cuối mỗi tuần hệ thống phải tiến thêm một mốc tích hợp rõ ràng.
 
