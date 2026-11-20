@@ -56,6 +56,35 @@ class SilverClinicalTests(unittest.TestCase):
     def reasons(self, result):
         return {r.record_key: set(r.reason_codes) for r in result.quarantine.collect()}
 
+    def test_lab_contract_normalizes_spellings_and_rejects_ambiguous_units(self):
+        from generators.batch_generator.schemas import LAB_TESTS
+        from spark.common.normalization import LAB_DEFINITIONS
+
+        self.assertEqual(LAB_DEFINITIONS, {test.code: (test.name, test.unit) for test in LAB_TESTS})
+        rows = [self.record("lab_results", test.code, test_code=f" {test.code.lower()} ",
+                            test_name=f" {test.name.lower()} ", unit=test.unit.replace("L", "l"))
+                for test in LAB_TESTS]
+        rows += [self.record("lab_results", "spaces", unit=" mg / dl "),
+                 self.record("lab_results", "prefix", unit="MG/dL"),
+                 self.record("lab_results", "conversion", unit="mmol/L"),
+                 self.record("lab_results", "missing", unit=None),
+                 self.record("lab_results", "code", test_code="NEW"),
+                 self.record("lab_results", "name", test_name="Sodium")]
+        result = self.result("lab_results", rows)
+        valid = {row.lab_result_id: row for row in result.valid.collect()}
+        self.assertEqual(set(valid), {test.code for test in LAB_TESTS} | {"spaces"})
+        for test in LAB_TESTS:
+            row = valid[test.code]
+            self.assertEqual((row.test_code, row.test_name, row.unit), (test.code, test.name, test.unit))
+            self.assertEqual((row.result_value, row.reference_low, row.reference_high), (100.0, 70.0, 100.0))
+        self.assertEqual(self.reasons(result), {
+            "prefix": {"UNSUPPORTED_LAB_UNIT"}, "conversion": {"UNSUPPORTED_LAB_UNIT"},
+            "missing": {"MISSING_UNIT", "UNSUPPORTED_LAB_UNIT"}, "code": {"UNKNOWN_LAB_TEST"},
+            "name": {"LAB_TEST_NAME_MISMATCH"},
+        })
+        missing = next(row for row in result.quarantine.collect() if row.record_key == "missing")
+        self.assertIn('"unit":null', missing.raw_record)
+
     def test_labs_recalculate_inclusive_ranges_and_preserve_raw_rejections(self):
         rows = [self.record("lab_results", "low", result_value=70.0), self.record("lab_results", "high"),
                 self.record("lab_results", "outside", result_value=100.1, is_abnormal=False),
