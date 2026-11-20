@@ -22,6 +22,7 @@ VIDEO_CONCURRENCY ?= 2
 
 help:
 	@printf '%s\n' 'make stream-clinical PYTHON=.venv/bin/python  TV2 Kafka -> ICU/department/lab snapshots (persistent CLINICAL_STATE_DIR)' 'make test-clinical-stream  Exercise real local stream/checkpoint recovery' 'make test-clinical-kafka  Exercise live Kafka -> clinical metrics (start Kafka first)'
+	@printf '%s\n' 'make clickhouse-up  Start aggregate serving tables and Grafana reader account' 'make test-clickhouse  Test Spark snapshots against a running disposable ClickHouse'
 	@printf '%s\n' 'make slides-report  Build the minimal English Checkpoint 1 report with default Beamer and pdfLaTeX'
 	@printf '%s\n' 'make video-setup  Install the optional video toolchain' 'make video-voice VIDEO_PYTHON=<speech-environment-python>  Generate Northern narration' 'make video-timeline VIDEO_PYTHON=<speech-environment-python>  Align narration and captions' 'make video-preview  Type-check and render key video frames' 'make video [VIDEO_CONCURRENCY=2]  Render, normalize, verify and package the introduction'
 	@printf '%s\n' 'make slides-explained  Build the Vietnamese beginner Beamer deck; open docs/hospitallake-explained.html for the offline interactive guide'
@@ -264,3 +265,10 @@ video:
 	cd docs/video && npm run check
 	cd docs/video && VIDEO_CONCURRENCY=$(VIDEO_CONCURRENCY) npm run render
 	$(PYTHON) docs/video/publish.py
+
+.PHONY: clickhouse-up test-clickhouse
+clickhouse-up:
+	$(COMPOSE) --profile serving up -d --wait clickhouse
+
+test-clickhouse:
+	RUN_CLICKHOUSE_TESTS=1 $(PYTHON) -m pytest tests/integration/test_clickhouse_serving.py -q
