@@ -36,6 +36,15 @@ TV4 smoke checks remain available.
 TV3's `spark/common/config.py` loads and validates shared Spark/Iceberg/MinIO environment settings; `tests/unit/test_spark_config.py` checks defaults, overrides, validation, and credential redaction. The Week 1 SparkSession setup is now shared in `spark/common/iceberg.py` and reused by fixtures/bootstrap; batch ingestion is implemented in `spark/batch/ingest_bronze.py`, with metadata and serial batch-ID retries. Unit contracts, structured failure logging (`tests/unit/test_bronze_logging.py`), session compatibility checks (`tests/unit/test_iceberg_session.py`) and real local Spark/Iceberg integration tests cover preservation, retry and failure behavior.
 TV4's Week 3 `spark/batch/silver_to_gold.py` computes four Gold metrics from Silver; `scripts/run_gold.py` submits it with shared Spark configuration. Exact-value local Spark tests exist; `make query` runs 11 Silver/Gold Trino queries (`scripts/run_queries.py`) and fails on errors or empty results; `scripts/checkpoint_demo.sh` + `docs/demo-script.md` script the Checkpoint 1 demo. All six Silver entities are implemented; `make gold-docker` (Compose service `gold`) rebuilds Gold and is the last step of `make batch`.
 TV4's Week 4 `spark/streaming/bronze_sink.py` writes validated Kafka micro-batches into Iceberg Bronze/quarantine; `scripts/stream_bronze_probe.py` checks progress over five minutes. TV3's reader runs in Compose (`make stream-bronze-docker`, internal listener `kafka:29092`, persistent checkpoint volume) and TV1's producer feeds it; live arrival and restart without lost or duplicate Kafka offsets were verified at 10–20 events/s, and `make stream-gate` (`scripts/stream_gate.py`) passed the Week 4 gate: 1000 events/s for 10 minutes, 600,000 messages in Bronze exactly once (reader ≈950 events/s on `local[1]`, so lag grew to 72k and cleared within ~103 s after the producer stopped; the reader later hit its 1.25 GiB container limit with ~660k Bronze rows most likely because each micro-batch MERGE scans the whole table (not yet profiled) — long-run stability not claimed).
+
+TV4 Week 6 adds Kubernetes manifests for ClickHouse, Grafana and Prometheus
+under `infra/k8s/observability/`. `make k8s-observability-up` builds dashboard
+and datasource ConfigMaps from the existing Grafana source files, creates the
+local-credential Secret from environment variables, then applies the services
+and workloads. ClickHouse/Grafana/Prometheus use PVCs and health probes;
+Prometheus scrapes ClickHouse on port 9363. This does not claim a live cluster
+deployment or the complete Week 6 gate; run `python -m pytest
+tests/unit/test_k8s_observability.py` for manifest contract checks.
 TV2 Week 2 provides six Bronze DDL contracts, daily hidden partitions and an idempotent, drift-checking table bootstrap. `bronze-smoke` validates isolated Parquet fixtures, S3 metadata, Trino compatibility, raw preservation and reruns. Production Bronze ingestion is available through `make batch-bronze`; the live Week 2 integration gate passed on 2026-10-22 (see `next_step.md`).
 "Planned files" below are the target names from `plan.md` §4 — create them with those exact names when you implement them.
 
@@ -174,7 +183,7 @@ No manually-clicked dashboards; everything provisioned from these files.
 | `k8s/minio/`, `k8s/iceberg/`, `k8s/trino/` | Storage + catalog + query engine manifests, PVCs | TV1 | 6 |
 | `k8s/kafka/` | Strimzi `Kafka` + `KafkaTopic` resources, producer Deployment | TV2 | 6 |
 | `k8s/spark/` | Spark Operator + `SparkApplication` (batch & streaming) | TV3 | 6 |
-| `k8s/clickhouse/`, `k8s/grafana/`, `k8s/prometheus/` | Serving + observability manifests (= "observability" in `works.md`) | TV4 | 6–7 |
+| `k8s/observability/` | TV4 ClickHouse StatefulSet/PVC/metrics endpoint, Grafana deployment/PVC/provisioned datasources and dashboards, Prometheus scrape config/deployment/PVC; `make k8s-observability-up` | TV4 | 6–7 |
 | `helm/` | Helm values for operators/charts (Strimzi, Spark Operator, Prometheus, …) | TV2/TV3/TV4 | 6 |
 
 ### 3.8 `tests/` — Shared
@@ -201,6 +210,8 @@ No manually-clicked dashboards; everything provisioned from these files.
 | `stream_gate.py` | Week 4 gate: producer at `GATE_RATE` → Kafka → Compose reader → Bronze; samples lag and requires every produced offset in Bronze exactly once; `make stream-gate`, summary in `results/stream-gate.json` | 4 |
 | `checkpoint_demo.sh` | Checkpoint 1 demo: `make up` → `make batch` → `make query` → `make test` (`STREAM=1` adds Kafka + producer); see `docs/demo-script.md` | 4 |
 | `stream_bronze_probe.py` | TV4: poll Trino for Bronze growth, quarantine and duplicate offsets over five minutes; `make stream-bronze-probe` | 4 |
+| `deploy_observability_k8s.py` | TV4: build Grafana ConfigMaps from source, create runtime Secret via stdin, roll credential consumers on Secret resource-version changes, apply workloads and wait for ready rollouts | 6 |
+| `test_k8s_observability.py` | TV4: verify serving/observability workload probes, service selectors, persistence claims, namespace and ClickHouse scrape target | 6 |
 | `reset.sh` | Dev reset (not a substitute for idempotency) | 1+ |
 | `check_generator.py` | TV1 Week 2: actual six-entity schema/FK/count validation and same-seed scale reruns; `verify-generated`, `validate-generator`; JSON report in ignored `results/` | 2 |
 | `seed.sh` | Generate + load demo dataset | 2 |

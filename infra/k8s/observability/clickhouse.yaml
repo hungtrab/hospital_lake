@@ -1,0 +1,162 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: clickhouse-observability-config
+  namespace: hospital-lake
+data:
+  metrics.xml: |
+    <clickhouse>
+      <listen_host>0.0.0.0</listen_host>
+      <prometheus>
+        <endpoint>/metrics</endpoint>
+        <port>9363</port>
+        <metrics>true</metrics>
+        <events>true</events>
+        <asynchronous_metrics>true</asynchronous_metrics>
+      </prometheus>
+    </clickhouse>
+  grafana-reader.xml: |
+    <clickhouse>
+      <users>
+        <grafana_reader>
+          <password from_env="CLICKHOUSE_GRAFANA_PASSWORD"/>
+          <profile>readonly</profile>
+          <quota>default</quota>
+          <networks>
+            <ip>::/0</ip>
+          </networks>
+          <allow_databases>
+            <database>hospital</database>
+          </allow_databases>
+        </grafana_reader>
+      </users>
+      <profiles>
+        <readonly>
+          <readonly>1</readonly>
+        </readonly>
+      </profiles>
+    </clickhouse>
+  init.sql: |
+    CREATE DATABASE IF NOT EXISTS hospital;
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse-headless
+  namespace: hospital-lake
+  labels:
+    app.kubernetes.io/name: clickhouse
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: clickhouse
+  ports:
+    - name: native
+      port: 9000
+      targetPort: native
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  namespace: hospital-lake
+  labels:
+    app.kubernetes.io/name: clickhouse
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: clickhouse
+  ports:
+    - name: http
+      port: 8123
+      targetPort: http
+    - name: native
+      port: 9000
+      targetPort: native
+    - name: metrics
+      port: 9363
+      targetPort: metrics
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: clickhouse
+  namespace: hospital-lake
+spec:
+  serviceName: clickhouse-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: clickhouse
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: clickhouse
+    spec:
+      securityContext:
+        fsGroup: 101
+      containers:
+        - name: clickhouse
+          image: clickhouse/clickhouse-server:25.8.2.29
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8123
+            - name: native
+              containerPort: 9000
+            - name: metrics
+              containerPort: 9363
+          env:
+            - name: CLICKHOUSE_GRAFANA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: hospital-serving-credentials
+                  key: CLICKHOUSE_GRAFANA_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/clickhouse
+            - name: config
+              mountPath: /etc/clickhouse-server/config.d/metrics.xml
+              subPath: metrics.xml
+              readOnly: true
+            - name: config
+              mountPath: /etc/clickhouse-server/users.d/grafana-reader.xml
+              subPath: grafana-reader.xml
+              readOnly: true
+            - name: config
+              mountPath: /docker-entrypoint-initdb.d/00-hospital.sql
+              subPath: init.sql
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: config
+          configMap:
+            name: clickhouse-observability-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 10Gi
