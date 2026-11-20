@@ -51,6 +51,7 @@ def test_clickhouse_has_persistent_stateful_storage_and_health_probes():
     }
     assert 'from_env="CLICKHOUSE_GRAFANA_PASSWORD"' in config["data"]["grafana-reader.xml"]
     assert "<readonly>1</readonly>" in config["data"]["grafana-reader.xml"]
+    assert "<max_execution_time><changeable_in_readonly/></max_execution_time>" in config["data"]["grafana-reader.xml"]
     assert "<port>9363</port>" in config["data"]["metrics.xml"]
 
 

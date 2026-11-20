@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -93,11 +94,21 @@ def stamp_credentials_revision(document: dict, resource_version: str) -> None:
     annotations[CREDENTIAL_REVISION_ANNOTATION] = resource_version
 
 
-def _apply_resource_file(path: Path, credential_resource_version: str) -> None:
-    for document in yaml.safe_load_all(path.read_text(encoding="utf-8")):
+def _apply_resource_file(path: Path, credential_resource_version: str, grafana_configmaps: list[dict]) -> None:
+    documents = list(yaml.safe_load_all(path.read_text(encoding="utf-8")))
+    for document in documents:
         if not document:
             continue
         stamp_credentials_revision(document, credential_resource_version)
+        kind = document["kind"]
+        if kind in {"StatefulSet", "Deployment"}:
+            # A subPath mount and Grafana startup provisioning both need a new pod.
+            configs = grafana_configmaps if document["metadata"]["name"] == "grafana" else [
+                item for item in documents if item and item["kind"] == "ConfigMap"
+            ]
+            config_digest = hashlib.sha256(json.dumps(configs, sort_keys=True).encode()).hexdigest()
+            annotations = document["spec"]["template"]["metadata"].setdefault("annotations", {})
+            annotations["hospital-lake/config-sha256"] = config_digest
         _apply_manifest(document)
 
 
@@ -132,12 +143,13 @@ def deploy(environment: Mapping[str, str] = os.environ) -> None:
     _apply_manifest(build_credentials_secret(environment))
     # A Secret resourceVersion change rolls both consumers without exposing values.
     credential_version = _credential_resource_version()
-    for configmap in build_configmaps():
+    grafana_configmaps = build_configmaps()
+    for configmap in grafana_configmaps:
         _apply_manifest(configmap)
 
     manifest_dir = ROOT / "infra" / "k8s" / "observability"
     for filename in ("clickhouse.yaml", "prometheus.yaml", "grafana.yaml"):
-        _apply_resource_file(manifest_dir / filename, credential_version)
+        _apply_resource_file(manifest_dir / filename, credential_version, grafana_configmaps)
 
     for workload, timeout in (
         ("statefulset/clickhouse", "300s"),
