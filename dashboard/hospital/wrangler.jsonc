@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "hospital-lake-group22",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-11-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "upload_source_maps": true,
+  "workers_dev": true,
+  "assets": {"directory": "./static", "binding": "ASSETS", "run_worker_first": true},
+  "observability": {"enabled": true},
+  "vpc_services": [{"binding":"HOSPITAL_API","service_id":"01a1f338-d873-7f12-b506-23e2b7951f3d","remote":true}]
+}
