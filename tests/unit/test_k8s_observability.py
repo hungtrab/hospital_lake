@@ -135,8 +135,16 @@ def test_generated_grafana_configmaps_use_source_dashboards_and_prometheus_datas
     }.issubset(dashboards)
     assert sum(len(content.encode("utf-8")) for content in dashboards.values()) < 1024 * 1024
     datasource_data = configmaps["hospital-grafana-datasources"]["data"]
-    assert "Hospital Trino" in datasource_data["hospital.yaml"]
-    assert "http://prometheus:9090" in datasource_data["prometheus.yaml"]
+    sources = [
+        source
+        for content in datasource_data.values()
+        for source in yaml.safe_load(content)["datasources"]
+    ]
+    assert sorted(source["uid"] for source in sources) == [
+        "hospital-clickhouse", "hospital-prometheus", "hospital-trino",
+    ]
+    prometheus = next(source for source in sources if source["uid"] == "hospital-prometheus")
+    assert prometheus["url"] == "http://prometheus:9090"
 
 
 def test_credentials_secret_is_created_from_runtime_environment_values():
